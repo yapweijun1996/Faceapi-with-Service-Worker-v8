@@ -13,11 +13,15 @@
 <body>
   <h1>Face Registration</h1>
   <script>
-    // Ensure service worker is registered and controls this page
+    // Register service worker if on secure origin
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('js/faceDetectionServiceWorker.js', { scope: './' })
-        .then(() => console.log('SW registered on register page'))
-        .catch(console.error);
+      if (location.protocol === 'https:' || location.hostname === 'localhost') {
+        navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
+          .then(() => console.log('Service worker registered on register page'))
+          .catch(console.error);
+      } else {
+        console.warn('Service workers require secure origin (HTTPS or localhost).');
+      }
     }
   </script>
   <p>

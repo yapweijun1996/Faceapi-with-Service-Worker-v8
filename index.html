@@ -16,11 +16,11 @@
 
   <script defer src="js/faceapi_warmup.js"></script>
   <script>
-    // Register the service worker once for the whole site
+    // Register the service worker (will fail on insecure contexts)
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker
-        .register('js/faceDetectionServiceWorker.js')
-        .catch(console.error);
+      navigator.serviceWorker.register('/service-worker.js')
+        .then(() => console.log('Service worker registered'))
+        .catch(err => console.warn('Service worker registration failed:', err));
     }
   </script>
 </body>
