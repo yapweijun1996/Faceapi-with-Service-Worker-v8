@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Face Detection</title>
+  <style>
+    /* General reset */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f9;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      min-height: 100vh; padding: 20px;
+      color: #333;
+    }
+    h1 { font-size: 2rem; margin-bottom: 20px; }
+    a { margin-bottom: 20px; color: #007bff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    #video { border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+    #canvas_output {
+      position: absolute; top: 0; left: 0;
+      width: 640px; height: 480px;
+      z-index: 10;
+    }
+    .container { position: relative; width: 640px; height: 480px; }
+  </style>
+  <!-- Warmup script initializes service worker, loads models, and starts detection -->
+  <script defer src="js/faceapi_warmup.js"></script>
+  <script>
+    // Manually register the root service worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/service-worker.js')
+        .then(() => console.log('Service worker registered'))
+        .catch(err => console.warn('SW registration failed:', err));
+    }
+  </script>
+</head>
+<body>
+  <h1>Face Detection</h1>
+  <a href="index.html">← Go back</a>
+  <div class="container">
+    <video id="video" width="640" height="480" autoplay muted playsinline></video>
+    <canvas id="canvas_output"></canvas>
+  </div>
+  <script>
+    // No register/verify actions on this page
+    var faceapi_action = '';
+    // After warmup (models loaded), start camera and detection
+    var warmup_completed = [camera_start, video_face_detection];
+    // Face detector options
+    var face_detector_options_setup = {
+      inputSize: 128,
+      scoreThreshold: 0.1,
+      maxDetectedFaces: 1
+    };
+  </script>
+</body>
+</html> 

@@ -10,8 +10,8 @@ var vle_facebox_yn = "y" ; // y / n
 
 var isWorkerReady = false;
 var worker = "";
-var serviceWorkerFileName = "faceDetectionServiceWorker.js";
-var serviceWorkerFilePath = "./js/faceDetectionServiceWorker.js";
+var serviceWorkerFileName = "service-worker.js";
+var serviceWorkerFilePath = "/service-worker.js";
 var imgFaceFilePathForWarmup = "./models/face_for_loading.png";
 
 if(typeof face_detector_options_setup === "undefined" || face_detector_options_setup === "undefined"){
