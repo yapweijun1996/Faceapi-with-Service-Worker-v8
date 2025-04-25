@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Registration</title>
+    <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+    <!-- Toast notifications container -->
+    <div id="toast-container" class="toast-container" aria-live="polite" role="region"></div>
+
+    <!-- Application Header -->
+    <header class="app-header">
+        <h1 class="app-header__title">Face Registration</h1>
+        <a href="app.html" class="app-header__back">Back</a>
+    </header>
+
+    <!-- Main Application Content -->
+    <main class="app-main">
+        <ol class="stepper">
+            <li class="stepper__item is-complete">Start</li>
+            <li class="stepper__item is-current">Register Face</li>
+            <li class="stepper__item">Download JSON</li>
+        </ol>
+
+        <!-- Status Indicator Component -->
+        <section class="status-indicator" aria-live="polite">
+            <p class="status-indicator__text">Initializing camera...</p>
+            <progress class="status-indicator__progress" value="0" max="100"></progress>
+        </section>
+
+        <!-- Face Detection and Controls -->
+        <section class="face-section" aria-live="off">
+            <div class="face-section__camera-container">
+                <video id="video" class="face-section__video" autoplay muted playsinline></video>
+                <canvas id="output-canvas" class="output-section__canvas" role="img" aria-label="Processed video with face overlays"></canvas>
+            </div>
+            <div class="capture-progress">
+                <p>Captures: <span id="capture-count">0</span>/3</p>
+            </div>
+        </section>
+
+        <!-- User Instructions -->
+        <section class="instructions">
+            <p>
+                Look directly at the camera and hold still. We will automatically capture 3 images
+                of your face to create your face ID. Once complete, a JSON file will be downloaded.
+                Save this file for future verification.
+            </p>
+        </section>
+    </main>
+
+    <!-- Load scripts -->
+    <script src="js/face-api.js"></script>
+    <script type="module">
+        // Import necessary modules
+        import { updateStatus, showToast } from './js/modules/ui.js';
+        import { startCamera, getVideoElement } from './js/modules/camera.js';
+        import { initDetection } from './js/modules/detection.js';
+        import { initWorker } from './js/modules/workerController.js';
+        import { drawImageDataToCanvas } from './js/modules/renderer.js';
+        import { handleRegister, setAction } from './js/modules/faceService.js';
+
+        // Initialize the face registration process when the DOM is loaded
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // First, ensure service worker is registered
+                await registerServiceWorker();
+                
+                // Set action mode to register
+                setAction('register');
+                
+                // Update status for user feedback
+                updateStatus('Initializing face registration...', 20);
+                
+                // Initialize the face detection worker with a callback for processing detections
+                const worker = await initWorker((payload) => {
+                    const detections = payload.detections;
+                    
+                    // Check if a valid face with descriptor was detected
+                    if (detections && detections[0] && detections[0][0] && detections[0][0].descriptor) {
+                        const descriptor = new Float32Array(detections[0][0].descriptor);
+                        
+                        // Process the face descriptor for registration
+                        handleRegister(descriptor);
+                        
+                        // Update the capture counter in the UI
+                        const captureCountEl = document.getElementById('capture-count');
+                        if (captureCountEl) {
+                            const currentCount = parseInt(captureCountEl.textContent) || 0;
+                            captureCountEl.textContent = currentCount + 1;
+                        }
+                    }
+                    
+                    // Draw the detection results on the canvas
+                    drawImageDataToCanvas(detections, 'output-canvas');
+                });
+                
+                // Update status and start camera
+                updateStatus('Starting camera...', 60);
+                await startCamera();
+                
+                // Final status update once everything is ready
+                updateStatus('Ready! Please look at the camera', 100);
+                showToast('Camera started. Please look directly at the camera.', 'info');
+                
+                // Start the face detection process if worker initialized successfully
+                if (worker) {
+                    initDetection(worker);
+                } else {
+                    throw new Error('Failed to initialize face detection worker');
+                }
+            } catch (error) {
+                console.error('Error in face registration:', error);
+                updateStatus('Error: ' + error.message, 0);
+                showToast('Failed to initialize face registration. Please try again.', 'error');
+            }
+        });
+        
+        /**
+         * Ensures the service worker is registered
+         * @returns {Promise<void>}
+         */
+        async function registerServiceWorker() {
+            updateStatus('Checking service worker...', 10);
+            
+            if ('serviceWorker' in navigator) {
+                try {
+                    // Check if service worker is already active
+                    const existingReg = await navigator.serviceWorker.getRegistration('./js/faceDetectionServiceWorker.js');
+                    
+                    if (existingReg) {
+                        console.log('Service Worker already registered');
+                        return;
+                    }
+                    
+                    // Register service worker if not already registered
+                    const registration = await navigator.serviceWorker.register('./js/faceDetectionServiceWorker.js');
+                    console.log('Service Worker registered with scope:', registration.scope);
+                } catch (error) {
+                    console.error('Service Worker registration failed:', error);
+                    throw new Error('Failed to register service worker: ' + error.message);
+                }
+            } else {
+                throw new Error('Service Workers not supported in this browser');
+            }
+        }
+    </script>
+</body>
+</html> 

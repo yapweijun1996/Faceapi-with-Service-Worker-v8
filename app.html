@@ -23,8 +23,9 @@
         </section>
 
         <div class="navigation-buttons">
-            <button id="register-button" class="button button--primary">Register Face</button>
-            <button id="verify-button" class="button button--secondary">Verify Face</button>
+            <!-- Initially disabled until service worker is ready -->
+            <button id="register-button" class="button button--primary" disabled>Register Face</button>
+            <button id="verify-button" class="button button--secondary" disabled>Verify Face</button>
         </div>
     </main>
 
@@ -33,35 +34,74 @@
     <script type="module">
         import { updateStatus, showToast } from './js/modules/ui.js';
 
-        // Register the service worker
-        document.addEventListener('DOMContentLoaded', async () => {
-            updateStatus('Registering service worker...', 20);
+        // Get button elements
+        const registerBtn = document.getElementById('register-button');
+        const verifyBtn = document.getElementById('verify-button');
 
+        // Initialize the application when DOM is loaded
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // Register the service worker
+                await registerServiceWorker();
+                
+                // Enable navigation buttons
+                registerBtn.disabled = false;
+                verifyBtn.disabled = false;
+                
+                // Set up navigation buttons
+                setupNavigation();
+            } catch (error) {
+                console.error('Initialization error:', error);
+                updateStatus('Error: ' + error.message, 0);
+                showToast('Failed to initialize application: ' + error.message, 'error');
+            }
+        });
+        
+        /**
+         * Ensures the service worker is registered
+         * @returns {Promise<void>}
+         */
+        async function registerServiceWorker() {
+            updateStatus('Checking service worker...', 20);
+            
             if ('serviceWorker' in navigator) {
                 try {
+                    // Check if service worker is already active
+                    const existingReg = await navigator.serviceWorker.getRegistration('./js/faceDetectionServiceWorker.js');
+                    
+                    if (existingReg) {
+                        console.log('Service Worker already registered');
+                        updateStatus('Service worker already registered', 100);
+                        return;
+                    }
+                    
+                    // Register service worker if not already registered
+                    updateStatus('Registering service worker...', 40);
                     const registration = await navigator.serviceWorker.register('./js/faceDetectionServiceWorker.js');
                     console.log('Service Worker registered with scope:', registration.scope);
                     updateStatus('Service worker registered successfully', 100);
                     showToast('Service worker ready', 'success');
                 } catch (error) {
                     console.error('Service Worker registration failed:', error);
-                    updateStatus('Failed to register service worker', 0);
-                    showToast('Service worker registration failed', 'error');
+                    throw new Error('Failed to register service worker: ' + error.message);
                 }
             } else {
-                updateStatus('Service Workers not supported in this browser', 0);
-                showToast('Service Workers not supported', 'error');
+                throw new Error('Service Workers not supported in this browser');
             }
-            
-            // Set up navigation buttons
-            document.getElementById('register-button').addEventListener('click', () => {
-                window.location.href = 'face_resiter.html';
+        }
+        
+        /**
+         * Sets up navigation button click handlers
+         */
+        function setupNavigation() {
+            registerBtn.addEventListener('click', () => {
+                window.location.href = 'face_register.html';
             });
             
-            document.getElementById('verify-button').addEventListener('click', () => {
+            verifyBtn.addEventListener('click', () => {
                 window.location.href = 'verify_face.html';
             });
-        });
+        }
     </script>
 </body>
 </html> 

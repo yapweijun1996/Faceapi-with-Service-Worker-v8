@@ -57,6 +57,7 @@
     <!-- Load scripts -->
     <script src="js/face-api.js"></script>
     <script type="module">
+        // Import necessary modules
         import { updateStatus, showToast } from './js/modules/ui.js';
         import { startCamera, getVideoElement } from './js/modules/camera.js';
         import { initDetection } from './js/modules/detection.js';
@@ -65,80 +66,198 @@
         import { handleVerify, setAction, setDescriptors } from './js/modules/faceService.js';
         import { updateStepper } from './js/modules/setupUI.js';
 
+        // Global worker reference
         let worker = null;
 
         document.addEventListener('DOMContentLoaded', async () => {
-            // Set action to verify
-            setAction('verify');
-            
-            // Initialize service worker and models but don't start detection yet
-            worker = await initWorker((payload) => {
-                const detections = payload.detections;
-                if (detections && detections[0] && detections[0][0] && detections[0][0].descriptor) {
-                    const descriptor = new Float32Array(detections[0][0].descriptor);
-                    handleVerify(descriptor);
+            try {
+                // First, ensure service worker is registered
+                await registerServiceWorker();
+                
+                // Set action to verify
+                setAction('verify');
+                
+                // Initialize service worker and models
+                updateStatus('Initializing face detection models...', 30);
+                worker = await initWorker((payload) => {
+                    const detections = payload.detections;
+                    if (detections && detections[0] && detections[0][0] && detections[0][0].descriptor) {
+                        const descriptor = new Float32Array(detections[0][0].descriptor);
+                        handleVerify(descriptor);
+                    }
+                    drawImageDataToCanvas(detections, 'output-canvas');
+                });
+                
+                if (!worker) {
+                    throw new Error('Failed to initialize face detection worker');
                 }
-                drawImageDataToCanvas(detections, 'output-canvas');
-            });
+                
+                updateStatus('Ready to upload face ID', 100);
+                
+                // Set up JSON upload and submit button event handlers
+                setupJsonSubmitHandler();
+            } catch (error) {
+                console.error('Error initializing verification:', error);
+                updateStatus('Error: ' + error.message, 0);
+                showToast('Failed to initialize face verification. Please try again.', 'error');
+            }
+        });
 
-            // Set up JSON upload and submit button
+        /**
+         * Ensures the service worker is registered
+         * @returns {Promise<void>}
+         */
+        async function registerServiceWorker() {
+            updateStatus('Checking service worker...', 10);
+            
+            if ('serviceWorker' in navigator) {
+                try {
+                    // Check if service worker is already active
+                    const existingReg = await navigator.serviceWorker.getRegistration('./js/faceDetectionServiceWorker.js');
+                    
+                    if (existingReg) {
+                        console.log('Service Worker already registered');
+                        return;
+                    }
+                    
+                    // Register service worker if not already registered
+                    const registration = await navigator.serviceWorker.register('./js/faceDetectionServiceWorker.js');
+                    console.log('Service Worker registered with scope:', registration.scope);
+                } catch (error) {
+                    console.error('Service Worker registration failed:', error);
+                    throw new Error('Failed to register service worker: ' + error.message);
+                }
+            } else {
+                throw new Error('Service Workers not supported in this browser');
+            }
+        }
+        
+        /**
+         * Sets up the JSON file upload and submit handler
+         */
+        function setupJsonSubmitHandler() {
             const submitButton = document.getElementById('submit-json');
             const fileInput = document.getElementById('jsonFileInput');
             
             submitButton.addEventListener('click', async () => {
+                // Validate file input
                 const file = fileInput.files[0];
                 if (!file) {
                     showToast('Please select a JSON file first', 'error');
                     return;
                 }
                 
-                try {
-                    updateStatus('Loading face ID data...', 50);
-                    
-                    const text = await file.text();
-                    const parsed = JSON.parse(text);
-                    
-                    // Convert loaded data into Float32Array descriptors
-                    const descriptors = Object.values(parsed)
-                        .map(item => {
-                            if (Array.isArray(item)) return new Float32Array(item);
-                            if (item && typeof item === 'object') return new Float32Array(Object.values(item));
-                            return null;
-                        })
-                        .filter(d => d !== null);
-
-                    if (descriptors.length === 0) {
-                        showToast('No valid descriptors found in JSON', 'error');
-                        return;
-                    }
-
-                    // Set descriptors for verification
-                    setDescriptors(descriptors);
-                    showToast('Face ID loaded successfully', 'success');
-                    
-                    // Update stepper and status
-                    updateStepper(2);
-                    updateStatus('Starting camera for verification...', 70);
-                    
-                    // Show face detection section
-                    document.getElementById('face-detection-section').style.display = 'block';
-                    
-                    // Start camera
-                    await startCamera();
-                    
-                    // Start detection
-                    if (worker) {
-                        initDetection(worker);
-                        updateStatus('Ready for face verification', 100);
-                        updateStepper(3);
-                    }
-                } catch (error) {
-                    console.error('Error loading JSON:', error);
-                    showToast('Failed to load JSON. Make sure it is a valid face ID file.', 'error');
-                    updateStatus('Error loading face ID file', 0);
-                }
+                // Process the JSON file
+                await processJsonFile(file);
             });
-        });
+        }
+        
+        /**
+         * Process the uploaded JSON file and start verification
+         * @param {File} file - The uploaded JSON file
+         */
+        async function processJsonFile(file) {
+            try {
+                updateStatus('Loading face ID data...', 50);
+                
+                // Read and parse the file
+                const text = await file.text();
+                let parsed;
+                
+                try {
+                    parsed = JSON.parse(text);
+                } catch (parseError) {
+                    showToast('Invalid JSON format. The file might be corrupted.', 'error');
+                    updateStatus('Error: Invalid JSON format', 0);
+                    return;
+                }
+                
+                // Convert the data to descriptors
+                const descriptors = convertToDescriptors(parsed);
+                
+                if (descriptors.length === 0) {
+                    showToast('No valid face descriptors found in the JSON file. Please upload a valid face ID file.', 'error');
+                    updateStatus('Error: Invalid face ID data', 0);
+                    return;
+                }
+
+                // Set descriptors for verification
+                setDescriptors(descriptors);
+                showToast('Face ID loaded successfully', 'success');
+                
+                // Update UI
+                updateStepper(2);
+                updateStatus('Starting camera for verification...', 70);
+                
+                // Show face detection section
+                document.getElementById('face-detection-section').style.display = 'block';
+                
+                // Start camera and face detection
+                await startVerification();
+            } catch (error) {
+                console.error('Error processing JSON:', error);
+                showToast('Failed to process JSON: ' + error.message, 'error');
+                updateStatus('Error loading face ID file', 0);
+            }
+        }
+        
+        /**
+         * Convert parsed JSON data to Float32Array descriptors
+         * @param {Object|Array} data - The parsed JSON data
+         * @returns {Float32Array[]} Array of descriptors
+         */
+        function convertToDescriptors(data) {
+            // Handle different JSON structures
+            let items = [];
+            
+            if (Array.isArray(data)) {
+                items = data;
+            } else if (data && typeof data === 'object') {
+                items = Object.values(data);
+            } else {
+                return [];
+            }
+            
+            return items
+                .map(item => {
+                    // Handle array format
+                    if (Array.isArray(item) && item.length > 0) {
+                        return new Float32Array(item);
+                    }
+                    // Handle object format
+                    if (item && typeof item === 'object') {
+                        const values = Object.values(item);
+                        if (values.length > 0) {
+                            return new Float32Array(values);
+                        }
+                    }
+                    return null;
+                })
+                .filter(d => d !== null);
+        }
+        
+        /**
+         * Start the camera and face verification process
+         */
+        async function startVerification() {
+            try {
+                // Start camera
+                await startCamera();
+                
+                // Start detection
+                if (worker) {
+                    initDetection(worker);
+                    updateStatus('Ready for face verification', 100);
+                    updateStepper(3);
+                } else {
+                    throw new Error('Face detection worker not initialized');
+                }
+            } catch (error) {
+                console.error('Error starting verification:', error);
+                showToast('Failed to start camera: ' + error.message, 'error');
+                updateStatus('Error starting verification', 0);
+            }
+        }
     </script>
 </body>
 </html> 
