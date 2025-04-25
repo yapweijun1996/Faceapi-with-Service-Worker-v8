@@ -30,7 +30,8 @@
 
 			/* Ensure the video wrapper scales while keeping the 4/3 aspect ratio */
 			.video-wrapper{
-				width:min(100vw,calc(100vh * 4 / 3)); /* fit inside viewport without cropping */
+				aspect-ratio:4/3;
+				width:min(100vw,calc(100vh * 4 / 3)); /* fit horizontal space while preserving 4:3 */
 				max-width:100%;
 			}
 
@@ -46,6 +47,18 @@
 				width:100%;
 				height:auto;
 				max-height:100vh;
+				aspect-ratio:4/3;
+			}
+
+			/* Adapt video & snapshot to portrait (mobile) 9:16 ratio */
+			@media (orientation: portrait){
+				.video-wrapper{
+					aspect-ratio:9/16;
+					width:min(100vw,calc(100vh * 9 / 16));
+				}
+				.snapshot{
+					aspect-ratio:9/16;
+				}
 			}
 		</style>
 		
