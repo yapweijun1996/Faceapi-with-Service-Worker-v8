@@ -1,3 +1,20 @@
+/**
+ * faceapi_warmup.js
+ * ------------------
+ * Helper utilities that sit on top of face-api.js + a Service Worker.
+ * The script is responsible for:
+ *   • Boot-strapping the Service Worker that loads the neural-network models in a
+ *     separate thread (avoids blocking the main UI).
+ *   • Handling camera start / stop, reading frames and forwarding them to the
+ *     worker for inference.
+ *   • Drawing helper overlays: raw frame, bounding box, facial landmarks, etc.
+ *   • Performing basic registration / verification logic using Euclidean
+ *     distance between face descriptors.
+ *
+ * NOTE: For brevity the implementation uses a bunch of global variables. If you
+ * intend to maintain / extend the code consider wrapping it inside an IIFE or
+ * converting it to an ES Module to avoid polluting the global scope.
+ */
 var videoId = "video";
 var canvasId = "canvas";
 var canvasId2 = "canvas2";
@@ -340,7 +357,28 @@ function faceapi_register(descriptor) {
 
 var vle_distance_rate = 0.3;
 
+/**
+ * Threshold used by face-api.js Euclidean distance to decide whether two
+ * face descriptors correspond to the same person.
+ *
+ * A lower value makes the verification stricter (fewer false positives but
+ * more false negatives). 0.3 is a commonly used starting point that works
+ * well in good lighting conditions. Adjust empirically for your setup.
+ */
 function faceapi_verify(descriptor){
+	/**
+	 * Compares the descriptor extracted from the current video frame against all
+	 * previously registered descriptors and determines whether the face belongs
+	 * to the registered person.
+	 *
+	 * The comparison uses the Euclidean distance provided by face-api.js. If any
+	 * distance is below `vle_distance_rate` we treat it as a match. The routine
+	 * runs only once per verification session – after a positive result the
+	 * `verificationCompleted` flag is set so we do not re-enter.
+	 *
+	 * @param {Float32Array} descriptor – Descriptor returned by face-api.js for
+	 *        the face detected in the current frame (128-length vector).
+	 */
 	// multiple [start]
 	if (descriptor && !verificationCompleted) {
 		let matchFound = false;
@@ -366,7 +404,9 @@ function faceapi_verify(descriptor){
 			faceapi_action = null;
 			alert("Face Verified: Same Person, distance : " + distance);
 		} else {
-			// Optional: handle non-match case
+			// The current descriptor did not match any reference. In production you might
+			// want to provide user feedback here (e.g., shake animation, sound, etc.) or
+			// count failed attempts before locking the flow.
 		}
 	}
 	// multiple [end  ]
