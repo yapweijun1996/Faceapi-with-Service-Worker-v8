@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simple Face API App</title>
+  <style>
+    /* Basic page styles */
+    body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
+    video, canvas { border: 1px solid #ccc; display: block; margin: 10px auto; }
+    #controls { margin: 10px auto; }
+    #controls > * { margin: 0 5px; }
+    #status, #result { margin-top: 10px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>Face Registration & Verification</h1>
+  <div id="status">Loading models, please wait...</div>
+  <video id="video" width="320" height="240" autoplay muted playsinline></video>
+  <canvas id="overlay" width="320" height="240"></canvas>
+  <div id="controls">
+    <input id="name" type="text" placeholder="Enter name" disabled>
+    <button id="register" disabled>Register Face</button>
+    <button id="verify" disabled>Verify Face</button>
+  </div>
+  <div id="result"></div>
+
+  <script type="module">
+    import * as faceapi from 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.esm.js';
+
+    // Grab references to DOM elements
+    const statusDiv = document.getElementById('status');
+    const video = document.getElementById('video');
+    const overlay = document.getElementById('overlay');
+    const nameInput = document.getElementById('name');
+    const registerBtn = document.getElementById('register');
+    const verifyBtn = document.getElementById('verify');
+    const resultDiv = document.getElementById('result');
+
+    // Store labelled face descriptors
+    const labeledDescriptors = {};
+
+    // Enable or disable controls
+    function setControls(enabled) {
+      nameInput.disabled = !enabled;
+      registerBtn.disabled = !enabled;
+      verifyBtn.disabled = !enabled;
+    }
+
+    // Load models from CDN
+    async function loadModels() {
+      const MODEL_URL = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/weights';
+      statusDiv.textContent = 'Loading face-api models...';
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+      ]);
+    }
+
+    // Start webcam video
+    async function startVideo() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+        return new Promise(resolve => video.onloadedmetadata = resolve);
+      } catch (err) {
+        console.error('Webcam error', err);
+        statusDiv.textContent = 'Cannot access webcam. Allow camera access.';
+        throw err;
+      }
+    }
+
+    // Draw detection boxes on canvas
+    function startDetection() {
+      const ctx = overlay.getContext('2d');
+      const displaySize = { width: video.width, height: video.height };
+      faceapi.matchDimensions(overlay, displaySize);
+      setInterval(async () => {
+        // Detect all faces and landmarks
+        const detections = await faceapi
+          .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+          .withFaceLandmarks()
+          .withFaceDescriptors();
+        ctx.clearRect(0, 0, overlay.width, overlay.height);
+        const resized = faceapi.resizeResults(detections, displaySize);
+        faceapi.draw.drawDetections(overlay, resized);
+      }, 200);
+    }
+
+    // Register face for given name
+    registerBtn.addEventListener('click', async () => {
+      const label = nameInput.value.trim();
+      if (!label) return alert('Enter a name');
+      const detection = await faceapi
+        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+      if (!detection) return alert('No face detected');
+      labeledDescriptors[label] = [detection.descriptor];
+      resultDiv.textContent = `Registered: ${label}`;
+    });
+
+    // Verify current face against registered
+    verifyBtn.addEventListener('click', async () => {
+      if (!Object.keys(labeledDescriptors).length) return alert('No faces registered');
+      const detection = await faceapi
+        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+      if (!detection) return alert('No face detected');
+      const labeledFaces = Object.entries(labeledDescriptors).map(
+        ([name, descriptors]) => new faceapi.LabeledFaceDescriptors(name, descriptors)
+      );
+      const matcher = new faceapi.FaceMatcher(labeledFaces, 0.6);
+      const best = matcher.findBestMatch(detection.descriptor);
+      resultDiv.textContent = best.label === 'unknown' ? 'No match found' : `Matched: ${best.label}`;
+    });
+
+    // Initialize application with error handling
+    (async () => {
+      setControls(false);
+      try {
+        await loadModels();
+        statusDiv.textContent = 'Models loaded. Starting video...';
+        await startVideo();
+        statusDiv.textContent = 'Video started. You can register or verify.';
+        setControls(true);
+        startDetection();
+      } catch (err) {
+        console.error('Initialization error', err);
+        statusDiv.textContent = 'Initialization failed. Check console for details.';
+      }
+    })();
+  </script>
+</body>
+</html> 
