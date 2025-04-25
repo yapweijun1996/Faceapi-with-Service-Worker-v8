@@ -1,225 +1,269 @@
-// Face Detection Service Worker
-// Handles face detection processing in a separate thread 
-importScripts('faceEnvWorkerPatch.js');
-importScripts('face-api.js');
+/**
+ * Face Detection Service Worker
+ * Handles face detection processing off the main thread
+ */
 
-// Initialize TensorFlow environment for worker
-self.tf = self.tf || {};
-self.tf.ENV.set('WEBGL_PACK', false);  // Prevents common height-related errors
+// Import face-api.js (path relative to service worker location)
+importScripts('../libs/face-api.js');
 
-// Track model loading state
-let isModelLoaded = false;
+// State
+let modelsLoaded = false;
+let processingQueue = [];
+let isProcessing = false;
+let consecutiveErrors = 0;
+const MAX_CONSECUTIVE_ERRORS = 5;
 
-// Default detector options - small input size for better performance
-const DEFAULT_DETECTOR_OPTIONS = new faceapi.TinyFaceDetectorOptions({
-	inputSize: 128,
-	scoreThreshold: 0.1,
-	maxDetectedFaces: 1,
-});
+// Constants
+const MODEL_URL = '../models';
+const DETECTION_OPTIONS = {
+  // Adjust these values based on performance needs
+  scoreThreshold: 0.5,
+  inputSize: 320,
+  boxSizeLimit: 100
+};
 
-// Current detector options (may be overridden by messages)
-let currentDetectorOptions = DEFAULT_DETECTOR_OPTIONS;
+/**
+ * Initialize face detection models
+ * @returns {Promise} Resolves when models are loaded
+ */
+async function initFaceDetection() {
+  console.log('Initializing face detection in worker');
+  
+  try {
+    // Configure face-api.js
+    faceapi.env.setEnv({ Canvas: OffscreenCanvas });
+    
+    // Load face detection models
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+    ]);
+    
+    console.log('Face detection models loaded in worker');
+    modelsLoaded = true;
+    
+    // Notify main thread that models are loaded
+    self.postMessage({ type: 'MODELS_LOADED' });
+    
+    return true;
+  } catch (error) {
+    console.error('Error loading face detection models:', error);
+    self.postMessage({ 
+      type: 'DETECTION_ERROR', 
+      data: { 
+        error: `Failed to load face detection models: ${error.message}`,
+        fatal: true
+      }
+    });
+    return false;
+  }
+}
 
-// Allow the worker to activate immediately when requested
-self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
+/**
+ * Process an image for face detection
+ * @param {ImageData|ImageBitmap} imageData - The image data to process
+ * @returns {Promise<Object>} Detection results
+ */
+async function processImage(imageData) {
+  if (!modelsLoaded) {
+    throw new Error('Face detection models not loaded');
+  }
+  
+  if (!imageData) {
+    throw new Error('Invalid image data provided');
+  }
+  
+  try {
+    // Validate dimensions
+    if (!imageData.width || !imageData.height || 
+        imageData.width <= 0 || imageData.height <= 0) {
+      throw new Error(`Invalid image dimensions: ${imageData.width}x${imageData.height}`);
+    }
+    
+    // Check for proper size (not too large to cause memory issues)
+    if (imageData.width > 2000 || imageData.height > 2000) {
+      throw new Error(`Image dimensions too large: ${imageData.width}x${imageData.height}`);
+    }
+    
+    const detectionOptions = new faceapi.TinyFaceDetectorOptions({
+      inputSize: DETECTION_OPTIONS.inputSize,
+      scoreThreshold: DETECTION_OPTIONS.scoreThreshold
+    });
+    
+    // Process the frame with face-api.js
+    const detections = await faceapi.detectAllFaces(imageData, detectionOptions)
+      .withFaceLandmarks()
+      .withFaceDescriptors();
+    
+    consecutiveErrors = 0; // Reset error counter on success
+    
+    // Return detection results
+    return { 
+      detections,
+      timestamp: Date.now(),
+      count: detections.length
+    };
+  } catch (error) {
+    consecutiveErrors++;
+    
+    // Log whether this is a persistent error
+    const isFatal = consecutiveErrors >= MAX_CONSECUTIVE_ERRORS;
+    
+    console.error(`Face detection error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, error);
+    
+    throw new Error(`Face detection failed: ${error.message}`);
+  }
+}
+
+/**
+ * Handle a frame for processing
+ * @param {Object} data - Frame data from main thread
+ */
+async function handleFrame(data) {
+  try {
+    if (!data || !data.imageData) {
+      throw new Error('Invalid frame data received');
+    }
+    
+    // Get image data
+    const imageData = data.imageData;
+    
+    // Process the image
+    const results = await processImage(imageData);
+    
+    // Send results back to main thread
+    if (results.count === 0) {
+      self.postMessage({ type: 'NO_FACE_DETECTED' });
+    } else if (results.count === 1) {
+      self.postMessage({ 
+        type: 'FACE_DETECTED',
+        data: {
+          faceBox: results.detections[0].detection.box,
+          timestamp: results.timestamp
+        }
+      });
+    } else if (results.count > 1) {
+      self.postMessage({ 
+        type: 'MULTIPLE_FACES_DETECTED',
+        data: { count: results.count }
+      });
+    }
+  } catch (error) {
+    const isFatal = consecutiveErrors >= MAX_CONSECUTIVE_ERRORS;
+    
+    self.postMessage({ 
+      type: 'DETECTION_ERROR', 
+      data: { 
+        error: error.message,
+        fatal: isFatal,
+        consecutiveErrors
+      }
+    });
+  }
+}
+
+/**
+ * Process queued frames
+ */
+async function processQueue() {
+  if (isProcessing || processingQueue.length === 0) {
+    return;
+  }
+  
+  isProcessing = true;
+  
+  try {
+    // Get the newest frame and discard others to avoid backlog
+    const frame = processingQueue.pop();
+    processingQueue = [];
+    
+    // Process the frame
+    await handleFrame(frame);
+  } catch (error) {
+    console.error('Error processing frame queue:', error);
+  } finally {
+    isProcessing = false;
+    
+    // Continue processing queue if items remain
+    if (processingQueue.length > 0) {
+      processQueue();
+    }
+  }
+}
+
+/**
+ * Add a frame to the processing queue
+ * @param {Object} frame - Frame data
+ */
+function queueFrame(frame) {
+  // Add frame to queue
+  processingQueue.push(frame);
+  
+  // Start processing if not already in progress
+  if (!isProcessing) {
+    processQueue();
+  }
+}
+
+// Event listeners
+self.addEventListener('message', async (event) => {
+  const { type, data } = event.data;
+  
+  switch (type) {
+    case 'INIT':
+      try {
+        await initFaceDetection();
+        self.postMessage({ type: 'READY' });
+      } catch (error) {
+        self.postMessage({ 
+          type: 'DETECTION_ERROR', 
+          data: { 
+            error: `Initialization failed: ${error.message}`,
+            fatal: true
+          }
+        });
+      }
+      break;
+      
+    case 'PROCESS_FRAME':
+      // Queue the frame for processing
+      queueFrame(data);
+      break;
+      
+    case 'RESET':
+      // Reset internal state
+      processingQueue = [];
+      isProcessing = false;
+      consecutiveErrors = 0;
+      self.postMessage({ type: 'RESET_COMPLETE' });
+      break;
+      
+    default:
+      console.log('Unknown message type in worker:', type);
   }
 });
 
-// When the service worker activates, claim all clients
-self.addEventListener('activate', event => {
-  console.log('Service worker activated and claiming clients');
+// If running as a dedicated worker, not a service worker
+if (typeof ServiceWorkerGlobalScope === 'undefined') {
+  console.log('Running as dedicated worker');
+  
+  // Send log message to main thread
+  self.postMessage({ 
+    type: 'LOG', 
+    data: { message: 'Face detection worker initialized' }
+  });
+}
+
+// Service worker specific event listeners
+self.addEventListener('install', (event) => {
+  console.log('Service worker installing...');
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  console.log('Service worker activated');
+  
+  // Take control immediately
   event.waitUntil(self.clients.claim());
-});
-
-/**
- * Load all required face-api models
- * Returns a promise that resolves when models are loaded
- */
-async function loadModels() {
-    try {
-        // Load required models from models directory
-        await faceapi.nets.tinyFaceDetector.loadFromUri('../models');
-        await faceapi.nets.faceLandmark68Net.loadFromUri('../models');
-        await faceapi.nets.faceRecognitionNet.loadFromUri('../models');
-
-        isModelLoaded = true;
-        broadcast({ type: 'MODELS_LOADED' });
-    } catch (error) {
-        console.error('Error loading models:', error);
-        broadcast({ 
-            type: 'MODELS_ERROR', 
-            error: error.message || 'Unknown model loading error' 
-        });
-    }
-}
-
-/**
- * Check if models are loaded, load them if not
- */
-async function checkModelsLoaded() {
-    if (isModelLoaded) {
-        console.log("Models already loaded");
-        broadcast({ type: 'MODELS_LOADED' });
-    } else {
-        console.log("Loading models...");
-        await loadModels();
-    }
-}
-
-/**
- * Process frame to detect faces and extract descriptors
- * @param {ImageData} imageData - Raw pixel data from canvas
- * @param {number} width - Image width
- * @param {number} height - Image height
- * @returns {Array} - [detections, extractedFaces] or [null, []] if no face found
- */
-async function detectFaces(imageData, width, height) {
-    // Return early if models aren't loaded
-    if (!isModelLoaded) {
-        console.log('Models not loaded yet');
-        return [null, []];
-    }
-
-    try {
-        // Validate input dimensions
-        if (!width || !height || width <= 0 || height <= 0) {
-            console.error('Invalid dimensions:', { width, height });
-            return [null, []];
-        }
-
-        // Validate image data
-        if (!imageData || !imageData.data || imageData.data.length === 0) {
-            console.error('Invalid image data');
-            return [null, []];
-        }
-
-        // Create offscreen canvas and draw image
-        const canvas = new OffscreenCanvas(width, height);
-        const ctx = canvas.getContext('2d');
-        ctx.putImageData(imageData, 0, 0);
-
-        // Verify canvas has content (sanity check)
-        const testData = ctx.getImageData(0, 0, 1, 1);
-        if (!testData || !testData.data) {
-            console.error('Canvas is empty');
-            return [null, []];
-        }
-
-        // Run face detection with landmarks and descriptors
-        const detections = await faceapi
-            .detectAllFaces(canvas, currentDetectorOptions)
-            .withFaceLandmarks()
-            .withFaceDescriptors();
-
-        // No faces found
-        if (!detections || detections.length === 0) {
-            return [null, []]; 
-        }
-
-        // Proceed with the first detected face
-        const landmarks = detections[0].landmarks;
-        
-        // Validate landmarks
-        if (!landmarks) {
-            console.error('No landmarks detected');
-            return [detections, []];
-        }
-
-        // Get eye positions for face alignment
-        const leftEye = landmarks.getLeftEye();
-        const rightEye = landmarks.getRightEye();
-        
-        if (!leftEye || !leftEye[0] || !rightEye || !rightEye[0]) {
-            console.error('Invalid eye landmarks');
-            return [detections, []];
-        }
-        
-        // Calculate face center based on eyes
-        const centerX = (leftEye[0].x + rightEye[0].x) / 2;
-        const centerY = (leftEye[0].y + rightEye[0].y) / 2;
-
-        // Extract face region centered on eyes
-        const regionsToExtract = [
-            new faceapi.Rect(centerX - 200, centerY - 100, 450, 450)
-        ];
-
-        // Extract face image data for visualization
-        const faceCanvas = await faceapi.extractFaces(canvas, regionsToExtract);
-        const faceImageData = faceCanvas.map(face => {
-            const faceCtx = face.getContext('2d');
-            return faceCtx.getImageData(0, 0, face.width, face.height);
-        });
-
-        return [detections, faceImageData];
-    } catch (error) {
-        console.error('Error in face detection:', error);
-        return [null, []];
-    }
-}
-
-/**
- * Send message to all connected clients
- * @param {Object} message - Message object to broadcast
- */
-async function broadcast(message) {
-    const allClients = await self.clients.matchAll({ includeUncontrolled: true });
-    allClients.forEach(client => {
-        client.postMessage(message);
-    });
-}
-
-// Handle messages from main thread
-self.addEventListener('message', async function(event) {
-    const { type, imageData, width, height, face_detector_options } = event.data;
-    
-    // Update detector options if provided
-    if (face_detector_options && face_detector_options !== "undefined") {
-        currentDetectorOptions = new faceapi.TinyFaceDetectorOptions(face_detector_options);
-    } else {
-        currentDetectorOptions = DEFAULT_DETECTOR_OPTIONS;
-    }
-
-    // Process different message types
-    switch (type) {
-        case 'LOAD_MODELS':
-            await checkModelsLoaded();
-            break;
-            
-        case 'DETECT_FACES':
-            const detections = await detectFaces(imageData, width, height);
-            broadcast({
-                type: 'DETECTION_RESULT',
-                data: {
-                    detections: detections,
-                    displaySize: { width, height }
-                }
-            });
-            break;
-            
-        case 'WARMUP_FACES':
-            // Similar to DETECT_FACES but with different response type
-            const warmupDetections = await detectFaces(imageData, width, height);
-            broadcast({
-                type: 'WARMUP_RESULT',
-                data: {
-                    detections: warmupDetections,
-                    displaySize: { width, height }
-                }
-            });
-            break;
-            
-        default:
-            console.log('Unknown message type:', type);
-    }
-});
-
-// Handle message errors
-self.addEventListener('messageerror', function(event) {
-    console.error('Service Worker message error:', event);
-    broadcast({
-        type: 'SERVICE_WORKER_ERROR',
-        error: 'Error processing message'
-    });
 });

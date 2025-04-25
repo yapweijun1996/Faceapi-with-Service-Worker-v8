@@ -7,6 +7,18 @@
  * Based on: https://github.com/justadudewhohacks/face-api.js/issues/47
  */
 
+// Define global browser dimension properties to prevent 'height' undefined errors
+self.innerWidth = 1280;
+self.innerHeight = 800;
+self.outerWidth = 1280;
+self.outerHeight = 800;
+self.screen = {
+    width: 1280,
+    height: 800,
+    availWidth: 1280,
+    availHeight: 800
+};
+
 // TensorFlow environment initialization
 self.tf = self.tf || {};
 self.tf.ENV = self.tf.ENV || {
@@ -17,11 +29,34 @@ self.tf.ENV = self.tf.ENV || {
     },
     get: function(key) {
         return self.tf.envVars ? self.tf.envVars[key] : undefined;
+    },
+    features: {},
+    getBool: function(name, defVal) { 
+        return typeof defVal === 'boolean' ? defVal : false; 
+    },
+    getNumber: function(name, defVal) { 
+        return typeof defVal === 'number' ? defVal : 0; 
+    },
+    getBytes: function(name, defVal) { 
+        return defVal; 
     }
 };
 
-// Disable WebGL packing to prevent height errors
+// Prevent WebGL packing to avoid height errors
 self.tf.ENV.set('WEBGL_PACK', false);
+
+// Configure memory handling
+self.tf.ENV.set('WEBGL_FORCE_F16_TEXTURES', false);
+self.tf.ENV.set('WEBGL_RENDER_FLOAT32_ENABLED', true);
+self.tf.ENV.set('WEBGL_FLUSH_THRESHOLD', 1);
+self.tf.ENV.set('CPU_HANDOFF_SIZE_THRESHOLD', 128);
+
+// Override getBackend to always return 'cpu' if asked
+self.tf.getBackend = function() { return 'cpu'; };
+self.tf.setBackend = function(backend) { 
+    console.log(`Attempted to set backend to ${backend}, using CPU instead`);
+    return Promise.resolve('cpu'); 
+};
 
 // Mock DOM elements required by face-api.js
 self.Canvas = self.HTMLCanvasElement = OffscreenCanvas;
@@ -29,9 +64,20 @@ self.HTMLCanvasElement.name = 'HTMLCanvasElement';
 self.Canvas.name = 'Canvas';
 self.CanvasRenderingContext2D = OffscreenCanvasRenderingContext2D;
 
-// Mock HTML elements that don't exist in Service Worker
+// Add a dummy prototype for image element
 function HTMLImageElement() {}
+HTMLImageElement.prototype.width = 0;
+HTMLImageElement.prototype.height = 0;
+HTMLImageElement.prototype.naturalWidth = 0;
+HTMLImageElement.prototype.naturalHeight = 0;
+HTMLImageElement.prototype.complete = true;
+
+// Add a dummy prototype for video element
 function HTMLVideoElement() {}
+HTMLVideoElement.prototype.width = 0;
+HTMLVideoElement.prototype.height = 0;
+HTMLVideoElement.prototype.videoWidth = 0;
+HTMLVideoElement.prototype.videoHeight = 0;
 
 self.Image = HTMLImageElement;
 self.Video = HTMLVideoElement;
@@ -63,6 +109,15 @@ class Document extends EventTarget {
     constructor() {
         super();
         this.location = self.location;
+        this.readyState = 'complete';
+        this.documentElement = {
+            clientWidth: 1280,
+            clientHeight: 800
+        };
+        this.body = {
+            clientWidth: 1280,
+            clientHeight: 800
+        };
     }
     
     // Mock document.createElement
@@ -86,6 +141,9 @@ class Document extends EventTarget {
 // Create global objects
 const document = new Document();
 const window = self;
+window.performance = {
+    now: () => Date.now()
+};
 
 // Assign to global scope
 self.window = window;
@@ -108,3 +166,6 @@ const isBrowserEnvironmentAvailable =
 if (!isBrowserEnvironmentAvailable) {
     throw new Error("Failed to set up browser environment in worker");
 }
+
+// Log successful setup
+console.log("Service worker environment patch applied successfully");

@@ -18,6 +18,54 @@ const DETECTION_OPTIONS = {
 let isDetectionActive = false;
 let frameCount = 0;
 let consecutiveErrorCount = 0;
+let lastFrameTimestamp = 0;
+
+/**
+ * Ensures the provided dimensions are valid for processing
+ * @param {number} width - Frame width
+ * @param {number} height - Frame height
+ * @returns {boolean} - Whether dimensions are valid
+ */
+function validateDimensions(width, height) {
+    if (!width || !height || 
+        typeof width !== 'number' || typeof height !== 'number' || 
+        width <= 0 || height <= 0 || 
+        width > 2000 || height > 2000) {
+        console.error('Invalid dimensions:', { width, height });
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Utility to create optimized frame dimensions
+ * @param {HTMLVideoElement} video - Video element
+ * @returns {Object} - Computed width and height
+ */
+function computeFrameDimensions(video) {
+    // Base size - keep small for performance
+    const baseWidth = 320;
+    
+    // Validate video element has dimensions
+    if (!video.videoWidth || !video.videoHeight || 
+        video.videoWidth < 10 || video.videoHeight < 10) {
+        return { width: baseWidth, height: baseWidth * 0.75 }; // Default 4:3 aspect
+    }
+    
+    // Calculate appropriate frame size for detection (smaller = faster)
+    const frameWidth = Math.min(baseWidth, video.videoWidth);
+    const aspectRatio = video.videoHeight / video.videoWidth;
+    const frameHeight = Math.min(
+        baseWidth * 0.75,  // Avoid too tall frames
+        Math.max(1, Math.round(frameWidth * aspectRatio))
+    );
+    
+    // Ensure dimensions are even numbers (helps with some image processing)
+    return {
+        width: Math.floor(frameWidth / 2) * 2,
+        height: Math.floor(frameHeight / 2) * 2
+    };
+}
 
 /**
  * Start continuous face detection using the service worker
@@ -29,12 +77,14 @@ export function initDetection(worker) {
     const video = getVideoElement();
     if (!video) {
         console.error('Video element not found - cannot start detection');
+        showToast('Camera element not found', 'error');
         return;
     }
 
     // Reset counters
     frameCount = 0;
     consecutiveErrorCount = 0;
+    lastFrameTimestamp = 0;
 
     // Create canvas for frame processing
     let captureCanvas;
@@ -43,10 +93,16 @@ export function initDetection(worker) {
     // Use OffscreenCanvas if available (better performance) or fall back to regular canvas
     if (typeof OffscreenCanvas !== 'undefined') {
         captureCanvas = new OffscreenCanvas(1, 1);
-        canvasContext = captureCanvas.getContext('2d');
+        canvasContext = captureCanvas.getContext('2d', { willReadFrequently: true });
     } else {
         captureCanvas = document.createElement('canvas');
-        canvasContext = captureCanvas.getContext('2d');
+        canvasContext = captureCanvas.getContext('2d', { willReadFrequently: true });
+    }
+    
+    if (!canvasContext) {
+        console.error('Failed to create canvas context');
+        showToast('Your browser does not support required canvas features', 'error');
+        return;
     }
 
     // Begin detection when video starts playing
@@ -56,21 +112,34 @@ export function initDetection(worker) {
         
         // Process video frames at regular intervals
         function processNextFrame() {
-            // Stop if detection has been disabled
+            // Check if detection is active
             if (!isDetectionActive) return;
             
-            // Wait until video is actually playing and has dimensions
-            if (!video.videoWidth || !video.videoHeight || video.videoWidth < 10 || video.videoHeight < 10) {
-                console.log('Waiting for valid video dimensions...');
-                setTimeout(processNextFrame, FRAME_INTERVAL_MS);
+            // Enforce frame rate by checking time since last frame
+            const now = performance.now();
+            if (now - lastFrameTimestamp < FRAME_INTERVAL_MS) {
+                requestAnimationFrame(processNextFrame);
                 return;
             }
             
+            // Update last frame timestamp
+            lastFrameTimestamp = now;
+            
             try {
-                // Calculate appropriate frame size for detection (smaller = faster)
-                const frameWidth = Math.min(320, video.videoWidth);
-                const aspectRatio = video.videoHeight / video.videoWidth;
-                const frameHeight = Math.min(240, Math.max(1, Math.round(frameWidth * aspectRatio)));
+                // Skip processing if video isn't ready
+                if (!video.readyState || video.readyState < 2) { // HAVE_CURRENT_DATA = 2
+                    setTimeout(processNextFrame, 100);
+                    return;
+                }
+                
+                // Get optimized dimensions for the frame
+                const { width: frameWidth, height: frameHeight } = computeFrameDimensions(video);
+                
+                // Validate dimensions
+                if (!validateDimensions(frameWidth, frameHeight)) {
+                    setTimeout(processNextFrame, FRAME_INTERVAL_MS);
+                    return;
+                }
                 
                 // Log occasional debug info
                 if (frameCount % 20 === 0) {
@@ -82,14 +151,8 @@ export function initDetection(worker) {
                 captureCanvas.width = frameWidth;
                 captureCanvas.height = frameHeight;
                 
-                // Validate dimensions
-                if (frameWidth <= 0 || frameHeight <= 0) {
-                    console.error('Invalid canvas dimensions', { frameWidth, frameHeight });
-                    setTimeout(processNextFrame, FRAME_INTERVAL_MS);
-                    return;
-                }
-                
-                // Draw current video frame to canvas
+                // Draw current video frame to canvas - first clear it
+                canvasContext.clearRect(0, 0, frameWidth, frameHeight);
                 canvasContext.drawImage(video, 0, 0, frameWidth, frameHeight);
                 
                 // Verify canvas context is still valid
@@ -106,8 +169,12 @@ export function initDetection(worker) {
                     
                     // Validate image data is usable
                     if (!frameImageData || !frameImageData.data || frameImageData.data.length === 0 || 
-                        frameImageData.width <= 0 || frameImageData.height <= 0) {
-                        throw new Error('Invalid image data extracted from canvas');
+                        frameImageData.width <= 0 || frameImageData.height <= 0 ||
+                        frameImageData.data.length !== frameWidth * frameHeight * 4) {
+                        throw new Error(
+                            `Invalid image data: expected ${frameWidth}x${frameHeight}×4 = ${frameWidth * frameHeight * 4} bytes, ` +
+                            `got ${frameImageData ? (frameImageData.data ? frameImageData.data.length : 'null data') : 'null imageData'}`
+                        );
                     }
                 } catch (err) {
                     consecutiveErrorCount++;
@@ -126,32 +193,38 @@ export function initDetection(worker) {
                 // Reset error counter on successful frame capture
                 consecutiveErrorCount = 0;
                 
-                // Send frame to worker for processing
-                // Note: Using transferable objects (imageData.data.buffer) for better performance
-                worker.postMessage({
-                    type: 'DETECT_FACES',
-                    imageData: frameImageData,
-                    width: frameWidth,
-                    height: frameHeight,
-                    face_detector_options: DETECTION_OPTIONS
-                }, [frameImageData.data.buffer]);  // Transfer ownership of the buffer
-                
+                try {
+                    // Send frame to worker for processing
+                    // Note: Using transferable objects (imageData.data.buffer) for better performance
+                    worker.postMessage({
+                        type: 'DETECT_FACES',
+                        imageData: frameImageData,
+                        width: frameWidth,
+                        height: frameHeight,
+                        timestamp: Date.now(),
+                        face_detector_options: DETECTION_OPTIONS
+                    }, [frameImageData.data.buffer]);  // Transfer ownership of the buffer
+                } catch (postError) {
+                    console.error('Error sending data to worker:', postError);
+                    // Don't increment consecutiveErrorCount here as this is a different kind of error
+                }
             } catch (error) {
                 console.error('Error in detection process:', error);
                 consecutiveErrorCount++;
             }
             
-            // Schedule next frame if video is still playing
+            // Schedule next frame using requestAnimationFrame for better performance
+            // but still respect our desired frame rate
             if (!video.paused && !video.ended) {
-                setTimeout(processNextFrame, FRAME_INTERVAL_MS);
+                requestAnimationFrame(processNextFrame);
             } else {
                 console.log('Video playback stopped - pausing detection');
                 isDetectionActive = false;
             }
         }
         
-        // Start the frame processing loop
-        processNextFrame();
+        // Start the frame processing loop using requestAnimationFrame
+        requestAnimationFrame(processNextFrame);
     });
 }
 
