@@ -1,4 +1,3 @@
-
 var videoId = "video";
 var canvasId = "canvas";
 var canvasId2 = "canvas2";
@@ -282,16 +281,19 @@ function draw_face_landmarks() {
 
 var registeredDescriptors = [];
 var maxCaptures = 3;
-		
+var registrationCompleted = false;
+
 function faceapi_register(descriptor) {
-    if (descriptor) {
+    if (descriptor && !registrationCompleted) {
         registeredDescriptors.push(descriptor);
 
         if (registeredDescriptors.length >= maxCaptures) {
             faceapi_get_face_id_descriptors = registeredDescriptors;
             
             alert("Registration completed");
-			camera_stop();
+            registrationCompleted = true;
+            faceapi_action = null;
+            camera_stop();
 
             // Convert the descriptors array to a JSON string
             const jsonData = JSON.stringify(faceapi_get_face_id_descriptors, null, 2);
