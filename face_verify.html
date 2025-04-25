@@ -52,12 +52,19 @@
 
 			/* Adapt video & snapshot to portrait (mobile) 9:16 ratio */
 			@media (orientation: portrait){
-				.video-wrapper{
-					aspect-ratio:9/16;
-					width:min(100vw,calc(100vh * 9 / 16));
-				}
+				/* Make wrapper & snapshot full-width with 9:16 aspect */
+				.video-wrapper,
 				.snapshot{
 					aspect-ratio:9/16;
+					width:100vw;
+					max-width:100vw;
+				}
+
+				/* Let the video scale to fill the wrapper without distortion */
+				#video{
+					width:100%;
+					height:100%;
+					object-fit:contain;
 				}
 			}
 		</style>
