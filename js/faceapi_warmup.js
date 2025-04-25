@@ -22,6 +22,9 @@ if(typeof face_detector_options_setup === "undefined" || face_detector_options_s
 	};
 }
 
+var isDetectingFrame = false;          // Prevent overlapping detection requests
+var videoDetectionStep = null;         // Reference to the next frame callback
+
 async function camera_start() {
 	var video = document.getElementById(videoId);
 	try {
@@ -98,10 +101,22 @@ function video_face_detection() {
 		canvas.width = video.videoWidth;
 		canvas.height = video.videoHeight;
 		function step() {
-			
+			// Skip processing if video is paused/ended or a detection is already running
+			if (video.paused || video.ended) {
+				return;
+			}
+			if (isDetectingFrame) {
+				// Wait until the previous detection result returns
+				requestAnimationFrame(step);
+				return;
+			}
+
+			// Capture current frame
 			context.drawImage(video, 0, 0, canvas.width, canvas.height);
 			const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-			imageData.willReadFrequently = true; 
+
+			// Mark a detection in-flight and send the frame to the worker
+			isDetectingFrame = true;
 			worker.postMessage({
 				type: 'DETECT_FACES',
 				imageData,
@@ -109,15 +124,14 @@ function video_face_detection() {
 				height: canvas.height,
 				face_detector_options: face_detector_options_setup,
 			});
-			
-			if(video.paused !== true){
-				//requestAnimationFrame(step);
-				setTimeout(step, step_fps);
-			}
-			
+
+			// Schedule the next frame – this will be skipped if detection is still running
+			// Next frame will be scheduled when the worker returns the detection result
 		}
-		//requestAnimationFrame(step);
-		setTimeout(step, step_fps);
+
+		// Store reference so we can trigger a new cycle from the worker callback
+		videoDetectionStep = step;
+		requestAnimationFrame(step);
 	});
 }
 			
@@ -435,6 +449,12 @@ async function initWorkerAddEventListener() {
 				}
 			}
 			
+			
+			// After all drawing operations are complete, mark detection as done and queue the next frame.
+			isDetectingFrame = false;
+			if (typeof videoDetectionStep === 'function') {
+				requestAnimationFrame(videoDetectionStep);
+			}
 			
 			break;
 			case 'WARMUP_RESULT':
