@@ -282,6 +282,7 @@ function draw_face_landmarks() {
 var registeredDescriptors = [];
 var maxCaptures = 3;
 var registrationCompleted = false;
+var verificationCompleted = false;
 
 function faceapi_register(descriptor) {
     if (descriptor && !registrationCompleted) {
@@ -326,9 +327,8 @@ function faceapi_register(descriptor) {
 var vle_distance_rate = 0.3;
 
 function faceapi_verify(descriptor){
-	
 	// multiple [start]
-	if (descriptor) {
+	if (descriptor && !verificationCompleted) {
 		let matchFound = false;
 		let distance;
 		
@@ -348,10 +348,11 @@ function faceapi_verify(descriptor){
 		
 		if (matchFound) {
 			camera_stop();
-			
+			verificationCompleted = true;
+			faceapi_action = null;
 			alert("Face Verified: Same Person, distance : " + distance);
 		} else {
-			
+			// Optional: handle non-match case
 		}
 	}
 	// multiple [end  ]
