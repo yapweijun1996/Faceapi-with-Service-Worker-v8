@@ -88,7 +88,7 @@ export async function initWorker(onDetectCallback) {
     updateStatus('Loading models...', 60);
     
     // Send message to load models
-    sw.postMessage({ type: 'LOAD_MODELS' });
+    sw.postMessage({ type: 'INIT' });
     updateStatus('Waiting for models to load...', 70);
 
     return sw;

@@ -4,7 +4,7 @@
  */
 
 // Import face-api.js (path relative to service worker location)
-importScripts('../libs/face-api.js');
+importScripts('face-api.js');
 
 // State
 let modelsLoaded = false;
