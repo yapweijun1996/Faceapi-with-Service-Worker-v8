@@ -1,0 +1,130 @@
+// faceDetectionServiceWorker.js
+importScripts('faceEnvWorkerPatch.js');
+importScripts('face-api.js');
+
+// No manual clientsList needed; we'll broadcast to all clients directly
+let isModelLoaded = false;
+
+var FaceDetectorOptionsDefault = new faceapi.TinyFaceDetectorOptions({
+	inputSize: 128,
+	scoreThreshold: 0.1,
+	maxDetectedFaces: 1,
+});
+var face_for_loading_options = FaceDetectorOptionsDefault;
+
+async function loadModels() {
+    try {
+        await faceapi.nets.tinyFaceDetector.loadFromUri('../models');
+        await faceapi.nets.faceLandmark68Net.loadFromUri('../models');
+        await faceapi.nets.faceRecognitionNet.loadFromUri('../models');
+
+        isModelLoaded = true;
+        broadcast({ type: 'MODELS_LOADED' });
+    } catch (error) {
+        console.error('Error loading models:', error);
+        broadcast({ type: 'MODELS_ERROR', error: error.message });
+    }
+}
+
+async function checkModelsLoaded() {
+    if (isModelLoaded) {
+        console.log("checkModelsLoaded : Models are loaded.");
+        broadcast({ type: 'MODELS_LOADED' });
+    } else {
+        console.log("checkModelsLoaded : Models are not loaded yet.");
+        await loadModels();
+    }
+}
+
+
+async function detectFaces(imageData, width, height) {
+    if (!isModelLoaded) {
+        console.log('Models not loaded yet');
+        return;
+    }
+
+    const canvas = new OffscreenCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+    ctx.putImageData(imageData, 0, 0);
+
+    const detections = await faceapi.detectAllFaces(canvas, face_for_loading_options).withFaceLandmarks().withFaceDescriptors();
+
+    if (detections.length > 0) {
+        const landmarks = detections[0].landmarks;
+
+        const leftEye = landmarks.getLeftEye();
+        const rightEye = landmarks.getRightEye();
+        const centerX = (leftEye[0].x + rightEye[0].x) / 2;
+        const centerY = (leftEye[0].y + rightEye[0].y) / 2;
+
+        const regionsToExtract = [
+            new faceapi.Rect(centerX - 200, centerY - 100, 450, 450)
+        ];
+
+        const faceCanvas = await faceapi.extractFaces(canvas, regionsToExtract);
+
+        // Create an array to hold the image data for each extracted face
+        const imageDatas = faceCanvas.map(face => {
+            const faceCtx = face.getContext('2d');
+            return faceCtx.getImageData(0, 0, face.width, face.height);
+        });
+
+        // You can return the imageDatas array along with the detections
+        return [detections, imageDatas];
+    } else {
+        console.log('No face detected');
+        return [null, []];
+    }
+}
+
+// Replace broadcast implementation
+async function broadcast(message) {
+    // Send message to all connected clients
+    const allClients = await self.clients.matchAll({ includeUncontrolled: true });
+    allClients.forEach(client => {
+        client.postMessage(message);
+    });
+}
+
+self.addEventListener('message', async function(event) {
+    // Handle incoming messages from clients and respond accordingly
+    const { type, imageData, width, height, face_detector_options } = event.data;
+    if(typeof face_detector_options === "undefined" || face_detector_options === "undefined"){
+        face_for_loading_options = FaceDetectorOptionsDefault;
+    }else{
+        face_for_loading_options = new faceapi.TinyFaceDetectorOptions(face_detector_options);
+    }
+
+    var detections;
+    switch (type) {
+        case 'LOAD_MODELS':
+            await checkModelsLoaded();
+            break;
+        case 'DETECT_FACES':
+            detections = await detectFaces(imageData, width, height);
+            broadcast({
+                type: 'DETECTION_RESULT',
+                data: {
+                    detections: detections,
+                    displaySize: { width, height }
+                }
+            });
+            break;
+        case 'WARMUP_FACES':
+            detections = await detectFaces(imageData, width, height);
+            broadcast({
+                type: 'WARMUP_RESULT',
+                data: {
+                    detections: detections,
+                    displaySize: { width, height }
+                }
+            });
+            break;
+        default:
+            console.log('Unknown message type:', type);
+    }
+});
+
+self.addEventListener('messageerror', function(event) {
+    console.error('Service Worker message error: ', event);
+});

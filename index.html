@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Face Recognition App</title>
+		<link rel="stylesheet" href="css/app.css">
+	</head>
+	<body>
+		<!-- Toast notifications container -->
+		<div id="toast-container" class="toast-container" aria-live="polite" role="status"></div>
+
+		<!-- Application Header -->
+		<header class="app-header">
+			<h1 class="app-header__title">Face Recognition App</h1>
+		</header>
+
+		<!-- Main Application Content -->
+		<main class="app-main">
+			<ol class="stepper">
+				<li class="stepper__item is-current">Upload JSON</li>
+				<li class="stepper__item">Start Camera</li>
+				<li class="stepper__item">Register/Verify</li>
+			</ol>
+			<!-- Status Indicator Component -->
+			<section class="status-indicator" aria-live="polite">
+				<p class="status-indicator__text">Initializing application...</p>
+				<progress class="status-indicator__progress" value="0" max="100"></progress>
+			</section>
+
+			<!-- Upload Module for Descriptor JSON -->
+			<section id="upload-module" class="upload-module">
+				<label for="jsonFileInput" class="upload-module__label">Upload Descriptor JSON:</label>
+				<input type="file" id="jsonFileInput" class="upload-module__input" accept=".json">
+			</section>
+
+			<!-- Face Detection and Controls -->
+			<section class="face-section" aria-live="off">
+				<div class="face-section__camera-container">
+					<video id="video" class="face-section__video" autoplay muted playsinline></video>
+				</div>
+				<div id="face-controls-container" class="face-section__controls-container"></div>
+			</section>
+
+			<!-- Output Display -->
+			<section class="output-section">
+				<div id="output-placeholder" class="output-section__placeholder">Loading output...</div>
+				<canvas id="output-canvas" class="output-section__canvas" role="img" aria-label="Processed video with face overlays"></canvas>
+			</section>
+
+			<!-- User Instructions -->
+			<section class="instructions">
+				<p>
+					Follow the on-screen instructions to register your face with a few captures or verify your identity.
+					Ensure you are in a well-lit area with a clear view of your face.
+				</p>
+			</section>
+		</main>
+
+		<!-- Reusable Face Controls Template -->
+		<template id="face-controls-template">
+			<div class="face-section__controls">
+				<button id="start-camera" class="button" aria-label="Start Camera">Start Camera</button>
+				<button id="stop-camera" class="button" aria-label="Stop Camera">Stop Camera</button>
+				<button id="register-face" class="button button--primary" aria-label="Register Face">Register Face</button>
+				<button id="verify-face" class="button button--secondary" aria-label="Verify Face">Verify Face</button>
+			</div>
+		</template>
+
+		<!-- FaceAPI library fallback -->
+		<script defer src="js/face-api.js"></script>
+		<!-- Main Application Script as ES Module -->
+		<script type="module" src="js/index.js"></script>
+	</body>
+</html> 
