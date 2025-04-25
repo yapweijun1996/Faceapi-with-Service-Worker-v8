@@ -41,42 +41,52 @@
 				text-decoration: underline;
 			}
 
-			/* Video container */
+			/* Video & overlay container */
+			.video-wrapper {
+				position: relative;
+				width: 640px;
+				max-width: 100%;
+			}
+
+			/* Video element */
 			#video {
 				border-radius: 8px;
 				box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-				max-width: 100%;
-				width: 640px;
+				width: 100%;
+				height: auto;
+				display: block;
 			}
 
-			/* Canvas for drawing output */
-			#canvas_output {
-				display: block;
-				width: 640px;
-				height: 480px;
+			/* Canvas overlays (bounding boxes, landmarks, etc.) */
+			.overlay {
+				position: absolute;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				pointer-events: none; /* allow clicks to pass through */
+				display: none; /* toggled by JS */
 				border-radius: 8px;
+			}
+
+			/* Snapshot canvas shown next to video */
+			.snapshot {
 				border: 2px solid #333;
 				background-color: rgba(255, 255, 255, 0.7);
 				box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-				margin-top: 20px;
-			}
-
-			/* Hide unused canvas elements */
-			canvas {
-				display: none;
-				width:100%;
-				position:absolute;
+				display: none; /* toggled by JS */
+				width: 640px;
+				height: 480px;
+				border-radius: 8px;
 			}
 
 			/* Responsive video */
 			@media (max-width: 768px) {
-				#video {
-					width: auto;
-					height: 100%;
+				.video-wrapper {
+					width: 100%;
 				}
 
-				#canvas_output {
-					width: 100%;
+				.snapshot {
 					max-width: 480px;
 				}
 			}
@@ -96,12 +106,14 @@
 		<h1>Face Detection</h1>
 		<a href="#" onclick="urlReplace('index.html')">Go to Index</a><br>
 		
-		<div style="width:100vw;padding: 10px;display: flex;">
-			<video id="video" width="640" height="480" autoplay playsinline muted style=""></video>
-			<canvas id="canvas" style="display:none;"></canvas>
-			<canvas id="canvas2" style="display:none;"></canvas>
-			<canvas id="canvas3" style="display:none;"></canvas>
-			<canvas id="canvas_output" style="display:none;"></canvas>
+		<div style="display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;">
+			<div class="video-wrapper">
+				<video id="video" width="640" height="480" autoplay playsinline muted></video>
+				<canvas id="canvas" class="overlay"></canvas>
+				<canvas id="canvas2" class="overlay"></canvas>
+				<canvas id="canvas3" class="overlay"></canvas>
+			</div>
+			<canvas id="canvas_output" class="snapshot"></canvas>
 		</div>
 
 		<script>
