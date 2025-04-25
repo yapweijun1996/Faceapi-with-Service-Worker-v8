@@ -8,7 +8,7 @@ const SERVICE_WORKER_NAME = 'faceDetectionServiceWorker.js';
 /**
  * Initialize the service worker, load models, and set up message listener.
  * @param {function} onDetectCallback - Called with {detections, displaySize} on detection.
- * @returns {Promise<ServiceWorker>|null} Active service worker instance.
+ * @returns {Promise<ServiceWorker>|null} Active service worker instance with models loaded.
  */
 export async function initWorker(onDetectCallback) {
   console.log('🔍 Initializing worker controller...');
@@ -57,10 +57,44 @@ export async function initWorker(onDetectCallback) {
     console.log('✅ Service worker is now active');
   }
 
-  // Listen for messages from worker
-  updateStatus('Service worker ready. Initializing listener...', 30);
-  console.log('🎧 Setting up message listener...');
+  // Create a promise that resolves when models are fully loaded
+  const modelsLoadedPromise = new Promise((resolve, reject) => {
+    // Set a timeout for model loading
+    const modelLoadingTimeout = setTimeout(() => {
+      reject(new Error('Face detection models failed to load (timeout)'));
+    }, 60000); // 60 second timeout
+    
+    // Listen for messages from worker
+    const messageHandler = event => {
+      console.log('📨 Received message from service worker:', event.data);
+      const { type, data } = event.data;
+      
+      if (type === 'MODELS_LOADED') {
+        console.log('📚 Face detection models loaded successfully');
+        clearTimeout(modelLoadingTimeout);
+        updateStatus('Models loaded. Ready to use!', 100);
+        showToast('Models loaded successfully. Ready for face verification.', 'success');
+        
+        // Resolve the promise with the service worker
+        resolve(sw);
+        
+        // Remove this one-time listener
+        navigator.serviceWorker.removeEventListener('message', messageHandler);
+      } else if (type === 'MODEL_LOAD_ERROR') {
+        console.error('❌ Model loading error:', event.data.error);
+        clearTimeout(modelLoadingTimeout);
+        reject(new Error(`Failed to load face detection model: ${event.data.modelName}`));
+        
+        // Remove this one-time listener
+        navigator.serviceWorker.removeEventListener('message', messageHandler);
+      }
+    };
+    
+    // Add the model loading message listener
+    navigator.serviceWorker.addEventListener('message', messageHandler);
+  });
   
+  // Add a general purpose message listener for other events (like detection results)
   navigator.serviceWorker.addEventListener('message', event => {
     console.log('📨 Received message from service worker:', event.data);
     const { type, data } = event.data;
@@ -72,26 +106,31 @@ export async function initWorker(onDetectCallback) {
           'No faces detected');
         onDetectCallback(data);
         break;
-      case 'MODELS_LOADED':
-        console.log('📚 Face detection models loaded successfully');
-        updateStatus('Models loaded. Ready to use!', 100);
-        document.querySelectorAll('.face-section__controls .button').forEach(btn => btn.disabled = false);
-        showToast('Models loaded. Click Start Camera to begin.', 'info');
-        break;
       default:
-        console.log('❓ Unhandled worker message type:', type);
+        // Ignore other message types as they're handled by the specific listeners
+        break;
     }
   });
 
-  // Load models in the worker
-  updateStatus('Listener initialized. Loading models...', 50);
+  // Start loading the models
+  updateStatus('Initializing face detection models...', 50);
   await delay(500);
-  updateStatus('Loading models...', 60);
+  updateStatus('Loading face detection models...', 60);
   console.log('📤 Sending LOAD_MODELS message to service worker');
   sw.postMessage({ type: 'LOAD_MODELS' });
   updateStatus('Waiting for models to load...', 70);
 
-  return sw;
+  try {
+    // Wait for models to be loaded
+    const readyServiceWorker = await modelsLoadedPromise;
+    console.log('🎉 Face detection models loaded and ready to use');
+    return readyServiceWorker;
+  } catch (error) {
+    console.error('❌ Error loading face detection models:', error);
+    updateStatus('Error: ' + error.message, 0);
+    showToast(error.message, 'error');
+    throw error; // Re-throw to be handled by the caller
+  }
 }
 
 /**

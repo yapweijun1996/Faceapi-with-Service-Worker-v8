@@ -31,6 +31,33 @@
             height: 100% !important;
             z-index: 2 !important;
         }
+        
+        /* Styles for model status indicator */
+        .model-status {
+            margin-top: 10px;
+            padding: 5px 10px;
+            font-size: 14px;
+            border-radius: 4px;
+            background-color: #f5f5f5;
+            text-align: center;
+        }
+        
+        /* Loading spinner for models */
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(0, 0, 0, 0.1);
+            border-top-color: #3498db;
+            border-radius: 50%;
+            animation: spin 1s infinite linear;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -60,8 +87,9 @@
         <!-- Upload Module for Descriptor JSON -->
         <section id="upload-module" class="upload-module">
             <label for="jsonFileInput" class="upload-module__label">Upload Face ID JSON:</label>
-            <input type="file" id="jsonFileInput" class="upload-module__input" accept=".json">
-            <button id="submit-json" class="button button--primary">Submit JSON</button>
+            <input type="file" id="jsonFileInput" class="upload-module__input" accept=".json" disabled>
+            <button id="submit-json" class="button button--primary" disabled>Submit JSON</button>
+            <p id="model-status" class="model-status">Loading face detection models... Please wait.</p>
         </section>
 
         <!-- Face Detection and Controls (initially hidden) -->
@@ -95,6 +123,12 @@
 
         // Global worker reference
         let worker = null;
+        // Flag to track if models are loaded
+        let modelsLoaded = false;
+        // Share the modelsLoaded flag with the global scope for testing
+        window.modelsLoaded = false;
+        // Flag to prevent multiple model status checks
+        let isCheckingModelStatus = false;
 
         document.addEventListener('DOMContentLoaded', async () => {
             try {
@@ -104,31 +138,151 @@
                 // Set action to verify
                 setAction('verify');
                 
-                // Initialize service worker and models
+                // Disable JSON upload controls until models are loaded
+                disableJsonControls(true, 'Loading face detection models... Please wait.');
+                
+                // Initialize service worker and wait until models are fully loaded
                 updateStatus('Initializing face detection models...', 30);
-                worker = await initWorker((payload) => {
-                    const detections = payload.detections;
-                    if (detections && detections[0] && detections[0][0] && detections[0][0].descriptor) {
-                        const descriptor = new Float32Array(detections[0][0].descriptor);
-                        handleVerify(descriptor);
+                
+                try {
+                    worker = await initWorker((payload) => {
+                        const detections = payload.detections;
+                        if (detections && detections[0] && detections[0][0] && detections[0][0].descriptor) {
+                            const descriptor = new Float32Array(detections[0][0].descriptor);
+                            handleVerify(descriptor);
+                        }
+                        drawImageDataToCanvas(detections, 'output-canvas');
+                    });
+                    
+                    if (!worker) {
+                        throw new Error('Failed to initialize face detection worker');
                     }
-                    drawImageDataToCanvas(detections, 'output-canvas');
-                });
-                
-                if (!worker) {
-                    throw new Error('Failed to initialize face detection worker');
+                    
+                    // Models are now loaded
+                    modelsLoaded = true;
+                    window.modelsLoaded = true;
+                    console.log('✅ Face detection models are loaded and ready');
+                    updateStatus('Ready to upload face ID', 100);
+                    
+                    // Enable JSON upload controls
+                    disableJsonControls(false, 'Models loaded! Please upload your face ID JSON file.');
+                    
+                    // Set up JSON upload and submit button event handlers
+                    setupJsonSubmitHandler();
+                    
+                    // Set up periodic model status checks to ensure models stay loaded
+                    startModelStatusChecks();
+                } catch (error) {
+                    console.error('❌ Error loading face detection models:', error);
+                    disableJsonControls(true, `Error loading models: ${error.message}. Please refresh the page to try again.`);
+                    throw error;
                 }
-                
-                updateStatus('Ready to upload face ID', 100);
-                
-                // Set up JSON upload and submit button event handlers
-                setupJsonSubmitHandler();
             } catch (error) {
                 console.error('Error initializing verification:', error);
                 updateStatus('Error: ' + error.message, 0);
                 showToast('Failed to initialize face verification. Please try again.', 'error');
             }
         });
+
+        /**
+         * Start periodic checks of model status
+         */
+        function startModelStatusChecks() {
+            // Check model status every 30 seconds
+            setInterval(checkModelStatus, 30000);
+            console.log('🔄 Started periodic model status checks');
+        }
+        
+        /**
+         * Check if the face detection models are still loaded
+         */
+        async function checkModelStatus() {
+            // Prevent multiple simultaneous checks
+            if (isCheckingModelStatus) return;
+            isCheckingModelStatus = true;
+            
+            try {
+                console.log('🔍 Checking face detection model status...');
+                
+                // Create a promise for the model status response
+                const modelStatusPromise = new Promise((resolve) => {
+                    // Add one-time listener for model status response
+                    const messageHandler = (event) => {
+                        if (event.data && event.data.type === 'TEST_RESULT') {
+                            navigator.serviceWorker.removeEventListener('message', messageHandler);
+                            resolve(event.data.status);
+                        }
+                    };
+                    
+                    // Add the listener
+                    navigator.serviceWorker.addEventListener('message', messageHandler);
+                    
+                    // Set timeout to prevent hanging
+                    setTimeout(() => {
+                        navigator.serviceWorker.removeEventListener('message', messageHandler);
+                        resolve({ isModelLoaded: false, error: 'Timeout' });
+                    }, 5000);
+                });
+                
+                // Send the status check request
+                const reg = await navigator.serviceWorker.getRegistration();
+                if (reg && reg.active) {
+                    reg.active.postMessage({ 
+                        type: 'TEST_FACE_DETECTION',
+                        timestamp: Date.now() 
+                    });
+                } else {
+                    console.error('❌ No active service worker found during status check');
+                    modelsLoaded = false;
+                    window.modelsLoaded = false;
+                    disableJsonControls(true, 'Error: Service worker not available. Please refresh the page.');
+                    isCheckingModelStatus = false;
+                    return;
+                }
+                
+                // Wait for response
+                const status = await modelStatusPromise;
+                console.log('📊 Model status check result:', status);
+                
+                // Update modelsLoaded flag
+                const wasLoaded = modelsLoaded;
+                modelsLoaded = status.isModelLoaded;
+                window.modelsLoaded = status.isModelLoaded;
+                
+                // If model status changed, update UI
+                if (wasLoaded && !modelsLoaded) {
+                    console.error('❌ Face detection models were loaded but are no longer available');
+                    disableJsonControls(true, 'Error: Face detection models are no longer available. Please refresh the page.');
+                    showToast('Face detection models are no longer available. Please refresh the page.', 'error');
+                } else if (!wasLoaded && modelsLoaded) {
+                    console.log('✅ Face detection models are now available');
+                    disableJsonControls(false, 'Models loaded! Please upload your face ID JSON file.');
+                    showToast('Face detection models are now available.', 'success');
+                }
+            } catch (error) {
+                console.error('❌ Error checking model status:', error);
+            } finally {
+                isCheckingModelStatus = false;
+            }
+        }
+
+        /**
+         * Enable or disable the JSON upload controls
+         * @param {boolean} disabled - Whether controls should be disabled
+         * @param {string} statusMessage - Message to display about model loading status
+         */
+        function disableJsonControls(disabled, statusMessage) {
+            const fileInput = document.getElementById('jsonFileInput');
+            const submitButton = document.getElementById('submit-json');
+            const statusElement = document.getElementById('model-status');
+            
+            if (fileInput) fileInput.disabled = disabled;
+            if (submitButton) submitButton.disabled = disabled;
+            if (statusElement) {
+                statusElement.textContent = statusMessage;
+                statusElement.style.color = disabled ? (statusMessage.includes('Error') ? 'red' : '#666') : 'green';
+            }
+        }
 
         /**
          * Ensures the service worker is registered
@@ -165,6 +319,7 @@
          * Sets up the JSON file upload and submit handler
          */
         function setupJsonSubmitHandler() {
+            console.log('🔄 Setting up JSON submit handler');
             const submitButton = document.getElementById('submit-json');
             const fileInput = document.getElementById('jsonFileInput');
             
@@ -173,6 +328,12 @@
                 const file = fileInput.files[0];
                 if (!file) {
                     showToast('Please select a JSON file first', 'error');
+                    return;
+                }
+                
+                // Ensure models are loaded before proceeding
+                if (!modelsLoaded) {
+                    showToast('Face detection models are not fully loaded yet. Please wait.', 'error');
                     return;
                 }
                 
@@ -221,8 +382,14 @@
                 // Show face detection section
                 document.getElementById('face-detection-section').style.display = 'block';
                 
-                // Start camera and face detection
-                await startVerification();
+                // Only start camera and face detection if models are loaded
+                if (modelsLoaded && worker) {
+                    // Start camera and face detection
+                    await startVerification();
+                } else {
+                    showToast('Cannot start verification: Face detection models not loaded', 'error');
+                    updateStatus('Error: Face detection models not loaded', 0);
+                }
             } catch (error) {
                 console.error('Error processing JSON:', error);
                 showToast('Failed to process JSON: ' + error.message, 'error');
@@ -351,6 +518,14 @@
             try {
                 console.log('🎬 Starting verification process');
                 
+                // Double check that models are loaded before starting
+                if (!modelsLoaded) {
+                    const error = new Error('Face detection models are not loaded');
+                    console.error('❌', error.message);
+                    showToast(error.message, 'error');
+                    throw error;
+                }
+                
                 // Start camera
                 console.log('🎥 Starting camera');
                 await startCamera();
@@ -385,7 +560,7 @@
                     originalUpdateStatus(message, progress);
                 };
                 
-                // Start detection
+                // Start detection with worker that has models loaded
                 if (worker) {
                     console.log('🔍 Initializing face detection');
                     initDetection(worker);
@@ -408,6 +583,13 @@
         try {
             // Log current face detection status
             console.log('Current face detection status:', window.faceDetectionStatus);
+            console.log('Models loaded:', window.modelsLoaded);
+            
+            // Update model status UI
+            const statusElement = document.getElementById('model-status');
+            if (statusElement) {
+                statusElement.innerHTML = '<span class="loading-spinner"></span> Testing face detection models...';
+            }
             
             // Add one-time listener for test response
             const testResponseHandler = function(event) {
@@ -422,8 +604,21 @@
                             lastUpdated: Date.now(),
                             message: 'Error: Face detection models not loaded!'
                         };
+                        
+                        // Update model status UI
+                        if (statusElement) {
+                            statusElement.textContent = '❌ Error: Face detection models are not loaded!';
+                            statusElement.style.color = 'red';
+                        }
                     } else {
                         console.log('✅ Face detection models are loaded correctly');
+                        window.modelsLoaded = true;
+                        
+                        // Update model status UI
+                        if (statusElement) {
+                            statusElement.textContent = '✅ Face detection models are loaded and ready!';
+                            statusElement.style.color = 'green';
+                        }
                     }
                     
                     // Remove the listener after receiving the response
@@ -448,12 +643,22 @@
                     console.log('📤 Test message sent to service worker');
                 } else {
                     console.log('❌ No active service worker found');
+                    if (statusElement) {
+                        statusElement.textContent = '❌ Error: No active service worker found';
+                        statusElement.style.color = 'red';
+                    }
                 }
             });
             
             return '🧪 Test initiated, check console for results';
         } catch (error) {
             console.error('❌ Test failed:', error);
+            // Update model status UI
+            const statusElement = document.getElementById('model-status');
+            if (statusElement) {
+                statusElement.textContent = `❌ Test failed: ${error.message}`;
+                statusElement.style.color = 'red';
+            }
             return '❌ Test failed: ' + error.message;
         }
     }
