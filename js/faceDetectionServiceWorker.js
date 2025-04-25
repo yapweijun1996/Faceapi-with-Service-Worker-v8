@@ -1,6 +1,6 @@
 // faceDetectionServiceWorker.js
-importScripts('faceEnvWorkerPatch.js');
-importScripts('face-api.min.js');
+importScripts('/js/faceEnvWorkerPatch.js');
+importScripts('/js/face-api.min.js');
 
 let clientsList = [];
 let isModelLoaded = false;
