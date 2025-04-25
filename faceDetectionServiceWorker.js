@@ -34,39 +34,45 @@ async function checkModelsLoaded() {
 async function detectFaces(imageData, width, height) {
     if (!isModelLoaded) {
         console.log('Models not loaded yet');
-        return;
+        return [null, []];
     }
 
     const canvas = new OffscreenCanvas(width, height);
     const ctx = canvas.getContext('2d');
     ctx.putImageData(imageData, 0, 0);
 
-    const detections = await faceapi.detectAllFaces(canvas, face_for_loading_options).withFaceLandmarks().withFaceDescriptors();
+    try {
+        const detections = await faceapi.detectAllFaces(canvas, face_for_loading_options).withFaceLandmarks().withFaceDescriptors();
 
-    if (detections.length > 0) {
-        const landmarks = detections[0].landmarks;
+        if (detections.length > 0) {
+            const landmarks = detections[0].landmarks;
 
-        const leftEye = landmarks.getLeftEye();
-        const rightEye = landmarks.getRightEye();
-        const centerX = (leftEye[0].x + rightEye[0].x) / 2;
-        const centerY = (leftEye[0].y + rightEye[0].y) / 2;
+            const leftEye = landmarks.getLeftEye();
+            const rightEye = landmarks.getRightEye();
+            const centerX = (leftEye[0].x + rightEye[0].x) / 2;
+            const centerY = (leftEye[0].y + rightEye[0].y) / 2;
 
-        const regionsToExtract = [
-            new faceapi.Rect(centerX - 200, centerY - 100, 450, 450)
-        ];
+            const regionsToExtract = [
+                new faceapi.Rect(centerX - 200, centerY - 100, 450, 450)
+            ];
 
-        const faceCanvas = await faceapi.extractFaces(canvas, regionsToExtract);
+            const faceCanvas = await faceapi.extractFaces(canvas, regionsToExtract);
 
-        // Create an array to hold the image data for each extracted face
-        const imageDatas = faceCanvas.map(face => {
-            const faceCtx = face.getContext('2d');
-            return faceCtx.getImageData(0, 0, face.width, face.height);
-        });
+            // Create an array to hold the image data for each extracted face
+            const imageDatas = faceCanvas.map(face => {
+                const faceCtx = face.getContext('2d');
+                return faceCtx.getImageData(0, 0, face.width, face.height);
+            });
 
-        // You can return the imageDatas array along with the detections
-        return [detections, imageDatas];
-    } else {
-        console.log('No face detected');
+            // Return the detections along with the extracted face images
+            return [detections, imageDatas];
+        } else {
+            console.log('No face detected');
+            // Return an empty array for imageDatas but still return the detections (empty array)
+            return [detections, []];
+        }
+    } catch (error) {
+        console.error('Error during face detection:', error);
         return [null, []];
     }
 }

@@ -5,6 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Face Verification</title>
     <link rel="stylesheet" href="css/app.css">
+    <!-- Inline styles to override CSS that hides camera -->
+    <style>
+        .face-section__camera-container {
+            display: block !important; /* Override display:none */
+            position: relative !important;
+            width: 640px !important;
+            height: 480px !important;
+            margin: 0 auto !important;
+            background-color: #000 !important;
+            border-radius: 8px !important;
+            overflow: hidden !important;
+        }
+        
+        .face-section__video {
+            position: absolute !important;
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+        }
+        
+        .output-section__canvas {
+            position: absolute !important;
+            width: 100% !important;
+            height: 100% !important;
+            z-index: 2 !important;
+        }
+    </style>
 </head>
 <body>
     <!-- Toast notifications container -->
@@ -239,12 +266,62 @@
         }
         
         /**
+         * Sets up continuous camera preview on the canvas
+         * This ensures that the camera feed is visible even before face detection results arrive
+         */
+        function setupCameraPreview() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('output-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Draw video frame to canvas continuously
+            function drawVideoFrame() {
+                if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                    // Set canvas size to match video
+                    if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                    }
+                    
+                    // Draw the video frame
+                    ctx.drawImage(video, 0, 0);
+                    
+                    // Add a message while waiting for face verification
+                    ctx.font = '24px Arial';
+                    ctx.fillStyle = 'white';
+                    ctx.strokeStyle = 'black';
+                    ctx.lineWidth = 2;
+                    const message = 'Waiting for face verification...';
+                    const textWidth = ctx.measureText(message).width;
+                    const x = (canvas.width - textWidth) / 2;
+                    const y = 40;
+                    
+                    ctx.strokeText(message, x, y);
+                    ctx.fillText(message, x, y);
+                }
+                
+                // Continue drawing only if video is playing and not paused
+                if (!video.paused && !video.ended) {
+                    requestAnimationFrame(drawVideoFrame);
+                }
+            }
+            
+            // Start drawing when video starts playing
+            video.addEventListener('play', () => {
+                drawVideoFrame();
+            });
+        }
+        
+        /**
          * Start the camera and face verification process
          */
         async function startVerification() {
             try {
                 // Start camera
                 await startCamera();
+                
+                // Set up canvas preview 
+                setupCameraPreview();
                 
                 // Start detection
                 if (worker) {
@@ -260,6 +337,138 @@
                 updateStatus('Error starting verification', 0);
             }
         }
+    </script>
+    <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            // Get DOM elements
+            const statusElement = document.querySelector('.status-indicator__text');
+            const faceVerificationElement = document.getElementById('output-canvas');
+            const videoEl = document.getElementById('video');
+            const canvasEl = document.getElementById('output-canvas');
+
+            if (!videoEl || !canvasEl) {
+                console.error('Video or Canvas element not found');
+                return;
+            }
+
+            // Only run this if we're not using the module system
+            if (typeof window.workerInitialized === 'undefined') {
+                // Update status and start camera first
+                statusElement.textContent = 'Starting camera...';
+                await setupCamera();
+                statusElement.textContent = 'Camera started. Setting up canvas preview...';
+
+                // Setup canvas
+                const ctx = canvasEl.getContext('2d');
+                
+                // Function to draw video frame on canvas
+                function drawVideoFrame() {
+                    if (!videoEl || !canvasEl || !ctx) {
+                        console.error('Video, Canvas, or Context not available');
+                        return;
+                    }
+                    
+                    // Make sure canvas dimensions match video
+                    if (canvasEl.width !== videoEl.videoWidth || canvasEl.height !== videoEl.videoHeight) {
+                        canvasEl.width = videoEl.videoWidth;
+                        canvasEl.height = videoEl.videoHeight;
+                        console.log(`Canvas dimensions set to: ${canvasEl.width} x ${canvasEl.height}`);
+                    }
+                    
+                    // Draw the video frame
+                    if (videoEl.readyState === videoEl.HAVE_ENOUGH_DATA) {
+                        ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+                        
+                        // Add text indicating waiting for face
+                        ctx.font = '20px Arial';
+                        ctx.fillStyle = 'white';
+                        ctx.fillText('Waiting for face detection...', 20, 30);
+                    }
+                    
+                    // Continue drawing frames
+                    requestAnimationFrame(drawVideoFrame);
+                }
+                
+                // Mark that we've initialized
+                window.workerInitialized = true;
+                
+                // Start drawing video frames
+                drawVideoFrame();
+            }
+            
+            async function setupCamera() {
+                try {
+                    const constraints = {
+                        video: {
+                            width: 640,
+                            height: 480,
+                            facingMode: 'user'
+                        }
+                    };
+                    
+                    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    videoEl.srcObject = stream;
+                    
+                    return new Promise((resolve) => {
+                        videoEl.onloadedmetadata = () => {
+                            videoEl.play();
+                            resolve();
+                        };
+                    });
+                } catch (error) {
+                    console.error('Error setting up camera:', error);
+                    statusElement.textContent = `Error setting up camera: ${error.message}`;
+                    throw error;
+                }
+            }
+
+            // Update verification status
+            function updateVerificationStatus(isVerified) {
+                if (isVerified) {
+                    statusElement.textContent = 'Face verified successfully!';
+                    statusElement.style.color = 'green';
+                } else {
+                    statusElement.textContent = 'Face verification failed!';
+                    statusElement.style.color = 'red';
+                }
+            }
+
+            // Note: The faceVerificationElement click handler is commented out as it's handled by the module system
+            // Uncomment and adapt if needed for direct verification without modules
+            /*
+            faceVerificationElement.addEventListener('click', async () => {
+                try {
+                    statusElement.textContent = 'Verifying face...';
+                    
+                    // Capture current frame from canvas
+                    const imageData = canvasEl.toDataURL('image/png');
+                    
+                    // Send the image to the server for verification
+                    const response = await fetch('/verify-face', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ image: imageData })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    // Update verification status based on server response
+                    updateVerificationStatus(result.verified);
+                    
+                } catch (error) {
+                    console.error('Error during face verification:', error);
+                    statusElement.textContent = `Error: ${error.message}`;
+                }
+            });
+            */
+        } catch (error) {
+            console.error('Error in main process:', error);
+            document.querySelector('.status-indicator__text').textContent = `Error: ${error.message}`;
+        }
+    });
     </script>
 </body>
 </html> 
