@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Verify Your Face</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    video, canvas { width:320px; height:240px; border:1px solid #aaa; }
+    #result { margin-top:1rem; font-size:1.2rem; font-weight:bold; }
+  </style>
+</head>
+<body>
+  <h1>Face Verification</h1>
+  <p>Position your face and click <strong>Verify</strong>.</p>
+  <video id="video" autoplay muted playsinline></video><br>
+  <button id="btnVerify">Verify</button>
+  <div id="result"></div>
+
+  <script defer src="js/face-api.js"></script>
+  <script>
+    function sendToWorker(msg) {
+      return navigator.serviceWorker.ready.then(reg => new Promise(res => {
+        const ch = new MessageChannel();
+        ch.port1.onmessage = e => res(e.data);
+        reg.active.postMessage(msg, [ch.port2]);
+      }));
+    }
+
+    const video = document.getElementById('video');
+    navigator.mediaDevices.getUserMedia({ video:true })
+      .then(s => video.srcObject = s)
+      .catch(err => {
+        document.getElementById('result').textContent =
+          'Camera error: ' + err.message;
+      });
+
+    document.getElementById('btnVerify').onclick = async () => {
+      const stored = localStorage.getItem('face-descriptor');
+      if (!stored) {
+        document.getElementById('result').textContent =
+          'No face registered. Please register first.';
+        return;
+      }
+      const targetDesc = JSON.parse(stored);
+
+      // capture frame
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      const bitmap = await createImageBitmap(canvas);
+
+      document.getElementById('result').textContent = 'Verifying…';
+      const resp = await sendToWorker({
+        type: 'VERIFY_REQUEST',
+        image: bitmap,
+        targetDescriptor: targetDesc
+      });
+
+      if (resp.match) {
+        document.getElementById('result').textContent = '✅ Face verified!';
+      } else {
+        document.getElementById('result').textContent =
+          '❌ Not recognized (distance = ' +
+          (resp.distance||0).toFixed(2) + ')';
+      }
+    };
+  </script>
+</body>
+</html> 

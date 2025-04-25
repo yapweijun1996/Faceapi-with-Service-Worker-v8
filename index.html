@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Face-API v8 + Service Worker Demo</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <!-- optional stylesheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>Face-API Service-Worker Demo</h1>
+  <ul>
+    <li><a href="face_register.html">Register face</a></li>
+    <li><a href="face_verify.html">Verify face</a></li>
+  </ul>
+
+  <script defer src="js/faceapi_warmup.js"></script>
+  <script>
+    // Register the service worker once for the whole site
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker
+        .register('js/faceDetectionServiceWorker.js')
+        .catch(console.error);
+    }
+  </script>
+</body>
+</html> 

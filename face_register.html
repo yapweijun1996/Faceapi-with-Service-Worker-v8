@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Register Your Face</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    video, canvas { width:320px; height:240px; border:1px solid #aaa; }
+    #status { margin-top:1rem; font-weight:bold; }
+  </style>
+</head>
+<body>
+  <h1>Face Registration</h1>
+  <p>
+    Allow camera access, center your face in the box, then click 
+    <strong>Register</strong>.
+  </p>
+  <video id="video" autoplay muted playsinline></video><br>
+  <button id="btnRegister">Register</button>
+  <div id="status"></div>
+
+  <script defer src="js/face-api.js"></script>
+  <script>
+    // Wait for SW, then postMessage via a MessageChannel
+    function sendToWorker(msg) {
+      return navigator.serviceWorker.ready.then(reg => new Promise(res => {
+        const ch = new MessageChannel();
+        ch.port1.onmessage = e => res(e.data);
+        reg.active.postMessage(msg, [ch.port2]);
+      }));
+    }
+
+    // Start camera
+    const video = document.getElementById('video');
+    navigator.mediaDevices.getUserMedia({ video:true })
+      .then(s => video.srcObject = s)
+      .catch(err => {
+        document.getElementById('status').textContent =
+          'Camera error: ' + err.message;
+      });
+
+    // On click: capture frame, send REGISTER_REQUEST
+    document.getElementById('btnRegister').onclick = async () => {
+      document.getElementById('status').textContent = 'Capturing…';
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      const bitmap = await createImageBitmap(canvas);
+
+      const resp = await sendToWorker({
+        type: 'REGISTER_REQUEST',
+        image: bitmap
+      });
+
+      if (resp.descriptor) {
+        localStorage.setItem(
+          'face-descriptor',
+          JSON.stringify(resp.descriptor)
+        );
+        document.getElementById('status').textContent =
+          'Registration successful!';
+      } else {
+        document.getElementById('status').textContent =
+          'Registration failed: ' + (resp.error || 'unknown');
+      }
+    };
+  </script>
+</body>
+</html> 
