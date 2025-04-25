@@ -76,8 +76,7 @@
                     }
                     
                     // Register service worker if not already registered
-                    updateStatus('Registering service worker...', 40);
-                    const registration = await navigator.serviceWorker.register('./faceDetectionServiceWorker.js', {
+                    const registration = await navigator.serviceWorker.register('./js/faceDetectionServiceWorker.js', {
                         scope: './'
                     });
                     console.log('Service Worker registered with scope:', registration.scope);

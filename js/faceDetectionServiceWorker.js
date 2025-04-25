@@ -2,8 +2,8 @@
 console.log('🚀 Service Worker: Script started');
 importScripts('faceEnvWorkerPatch.js');
 console.log('✅ Service Worker: faceEnvWorkerPatch.js imported');
-importScripts('face-api.min.js');
-console.log('✅ Service Worker: face-api.min.js imported');
+importScripts('face-api.js');
+console.log('✅ Service Worker: face-api.js imported');
 
 // No manual clientsList needed; we'll broadcast to all clients directly
 let isModelLoaded = false;
@@ -19,7 +19,7 @@ async function loadModels() {
     console.log('📚 Service Worker: Loading face-api.js models...');
     console.log('🔍 Service Worker: Loading tinyFaceDetector model...');
     try {
-        await faceapi.nets.tinyFaceDetector.loadFromUri('./models');
+        await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
         console.log('✅ Service Worker: tinyFaceDetector loaded successfully');
     } catch (error) {
         console.error('❌ Service Worker: Error loading tinyFaceDetector:', error);
@@ -29,7 +29,7 @@ async function loadModels() {
     
     console.log('🔍 Service Worker: Loading faceLandmark68Net model...');
     try {
-        await faceapi.nets.faceLandmark68Net.loadFromUri('./models');
+        await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
         console.log('✅ Service Worker: faceLandmark68Net loaded successfully');
     } catch (error) {
         console.error('❌ Service Worker: Error loading faceLandmark68Net:', error);
@@ -39,7 +39,7 @@ async function loadModels() {
     
     console.log('🔍 Service Worker: Loading faceRecognitionNet model...');
     try {
-        await faceapi.nets.faceRecognitionNet.loadFromUri('./models');
+        await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
         console.log('✅ Service Worker: faceRecognitionNet loaded successfully');
     } catch (error) {
         console.error('❌ Service Worker: Error loading faceRecognitionNet:', error);
@@ -205,6 +205,8 @@ self.addEventListener('messageerror', function(event) {
 
 self.addEventListener('activate', event => {
     console.log('🔄 Service Worker: Activated');
+    // Claim any clients immediately, so the page is controlled without reload
+    event.waitUntil(self.clients.claim());
 });
 
 self.addEventListener('install', event => {

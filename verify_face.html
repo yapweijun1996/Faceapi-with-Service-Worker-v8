@@ -112,703 +112,107 @@
     <!-- Load scripts -->
     <script src="js/face-api.js"></script>
     <script type="module">
-        // Import necessary modules
-        import { updateStatus, showToast } from './js/modules/ui.js';
-        import { startCamera, getVideoElement } from './js/modules/camera.js';
-        import { initDetection } from './js/modules/detection.js';
-        import { initWorker } from './js/modules/workerController.js';
-        import { drawImageDataToCanvas } from './js/modules/renderer.js';
-        import { handleVerify, setAction, setDescriptors } from './js/modules/faceService.js';
-        import { updateStepper } from './js/modules/setupUI.js';
+    import { updateStatus, showToast } from './js/modules/ui.js';
+    import { startCamera } from './js/modules/camera.js';
+    import { initDetection } from './js/modules/detection.js';
+    import { initWorker } from './js/modules/workerController.js';
+    import { drawImageDataToCanvas } from './js/modules/renderer.js';
+    import { handleVerify, setAction, setDescriptors } from './js/modules/faceService.js';
+    import { updateStepper } from './js/modules/setupUI.js';
 
-        // Global worker reference
-        let worker = null;
-        // Flag to track if models are loaded
-        let modelsLoaded = false;
-        // Share the modelsLoaded flag with the global scope for testing
-        window.modelsLoaded = false;
-        // Flag to prevent multiple model status checks
-        let isCheckingModelStatus = false;
+    let fileInput, submitBtn, detectionSection, worker;
 
-        document.addEventListener('DOMContentLoaded', async () => {
-            try {
-                // First, ensure service worker is registered
-                await registerServiceWorker();
-                
-                // Set action to verify
-                setAction('verify');
-                
-                // Disable JSON upload controls until models are loaded
-                disableJsonControls(true, 'Loading face detection models... Please wait.');
-                
-                // Initialize service worker and wait until models are fully loaded
-                updateStatus('Initializing face detection models...', 30);
-                
-                try {
-                    worker = await initWorker((payload) => {
-                        const detections = payload.detections;
-                        if (detections && detections[0] && detections[0][0] && detections[0][0].descriptor) {
-                            const descriptor = new Float32Array(detections[0][0].descriptor);
-                            handleVerify(descriptor);
-                        }
-                        drawImageDataToCanvas(detections, 'output-canvas');
-                    });
-                    
-                    if (!worker) {
-                        throw new Error('Failed to initialize face detection worker');
-                    }
-                    
-                    // Models are now loaded
-                    modelsLoaded = true;
-                    window.modelsLoaded = true;
-                    console.log('✅ Face detection models are loaded and ready');
-                    updateStatus('Ready to upload face ID', 100);
-                    
-                    // Enable JSON upload controls
-                    disableJsonControls(false, 'Models loaded! Please upload your face ID JSON file.');
-                    
-                    // Set up JSON upload and submit button event handlers
-                    setupJsonSubmitHandler();
-                    
-                    // Set up periodic model status checks to ensure models stay loaded
-                    startModelStatusChecks();
-                } catch (error) {
-                    console.error('❌ Error loading face detection models:', error);
-                    disableJsonControls(true, `Error loading models: ${error.message}. Please refresh the page to try again.`);
-                    throw error;
-                }
-            } catch (error) {
-                console.error('Error initializing verification:', error);
-                updateStatus('Error: ' + error.message, 0);
-                showToast('Failed to initialize face verification. Please try again.', 'error');
-            }
-        });
-
-        /**
-         * Start periodic checks of model status
-         */
-        function startModelStatusChecks() {
-            // Check model status every 30 seconds
-            setInterval(checkModelStatus, 30000);
-            console.log('🔄 Started periodic model status checks');
-        }
-        
-        /**
-         * Check if the face detection models are still loaded
-         */
-        async function checkModelStatus() {
-            // Prevent multiple simultaneous checks
-            if (isCheckingModelStatus) return;
-            isCheckingModelStatus = true;
-            
-            try {
-                console.log('🔍 Checking face detection model status...');
-                
-                // Create a promise for the model status response
-                const modelStatusPromise = new Promise((resolve) => {
-                    // Add one-time listener for model status response
-                    const messageHandler = (event) => {
-                        if (event.data && event.data.type === 'TEST_RESULT') {
-                            navigator.serviceWorker.removeEventListener('message', messageHandler);
-                            resolve(event.data.status);
-                        }
-                    };
-                    
-                    // Add the listener
-                    navigator.serviceWorker.addEventListener('message', messageHandler);
-                    
-                    // Set timeout to prevent hanging
-                    setTimeout(() => {
-                        navigator.serviceWorker.removeEventListener('message', messageHandler);
-                        resolve({ isModelLoaded: false, error: 'Timeout' });
-                    }, 5000);
-                });
-                
-                // Send the status check request
-                const reg = await navigator.serviceWorker.getRegistration();
-                if (reg && reg.active) {
-                    reg.active.postMessage({ 
-                        type: 'TEST_FACE_DETECTION',
-                        timestamp: Date.now() 
-                    });
-                } else {
-                    console.error('❌ No active service worker found during status check');
-                    modelsLoaded = false;
-                    window.modelsLoaded = false;
-                    disableJsonControls(true, 'Error: Service worker not available. Please refresh the page.');
-                    isCheckingModelStatus = false;
-                    return;
-                }
-                
-                // Wait for response
-                const status = await modelStatusPromise;
-                console.log('📊 Model status check result:', status);
-                
-                // Update modelsLoaded flag
-                const wasLoaded = modelsLoaded;
-                modelsLoaded = status.isModelLoaded;
-                window.modelsLoaded = status.isModelLoaded;
-                
-                // If model status changed, update UI
-                if (wasLoaded && !modelsLoaded) {
-                    console.error('❌ Face detection models were loaded but are no longer available');
-                    disableJsonControls(true, 'Error: Face detection models are no longer available. Please refresh the page.');
-                    showToast('Face detection models are no longer available. Please refresh the page.', 'error');
-                } else if (!wasLoaded && modelsLoaded) {
-                    console.log('✅ Face detection models are now available');
-                    disableJsonControls(false, 'Models loaded! Please upload your face ID JSON file.');
-                    showToast('Face detection models are now available.', 'success');
-                }
-            } catch (error) {
-                console.error('❌ Error checking model status:', error);
-            } finally {
-                isCheckingModelStatus = false;
-            }
-        }
-
-        /**
-         * Enable or disable the JSON upload controls
-         * @param {boolean} disabled - Whether controls should be disabled
-         * @param {string} statusMessage - Message to display about model loading status
-         */
-        function disableJsonControls(disabled, statusMessage) {
-            const fileInput = document.getElementById('jsonFileInput');
-            const submitButton = document.getElementById('submit-json');
-            const statusElement = document.getElementById('model-status');
-            
-            if (fileInput) fileInput.disabled = disabled;
-            if (submitButton) submitButton.disabled = disabled;
-            if (statusElement) {
-                statusElement.textContent = statusMessage;
-                statusElement.style.color = disabled ? (statusMessage.includes('Error') ? 'red' : '#666') : 'green';
-            }
-        }
-
-        /**
-         * Ensures the service worker is registered
-         * @returns {Promise<void>}
-         */
-        async function registerServiceWorker() {
-            updateStatus('Checking service worker...', 10);
-            
-            if ('serviceWorker' in navigator) {
-                try {
-                    // Check if service worker is already active
-                    const existingReg = await navigator.serviceWorker.getRegistration();
-                    
-                    if (existingReg) {
-                        console.log('Service Worker already registered');
-                        return;
-                    }
-                    
-                    // Register service worker if not already registered
-                    const registration = await navigator.serviceWorker.register('./faceDetectionServiceWorker.js', {
-                        scope: './'
-                    });
-                    console.log('Service Worker registered with scope:', registration.scope);
-                } catch (error) {
-                    console.error('Service Worker registration failed:', error);
-                    throw new Error('Failed to register service worker: ' + error.message);
-                }
-            } else {
-                throw new Error('Service Workers not supported in this browser');
-            }
-        }
-        
-        /**
-         * Sets up the JSON file upload and submit handler
-         */
-        function setupJsonSubmitHandler() {
-            console.log('🔄 Setting up JSON submit handler');
-            const submitButton = document.getElementById('submit-json');
-            const fileInput = document.getElementById('jsonFileInput');
-            
-            submitButton.addEventListener('click', async () => {
-                // Validate file input
-                const file = fileInput.files[0];
-                if (!file) {
-                    showToast('Please select a JSON file first', 'error');
-                    return;
-                }
-                
-                // Ensure models are loaded before proceeding
-                if (!modelsLoaded) {
-                    showToast('Face detection models are not fully loaded yet. Please wait.', 'error');
-                    return;
-                }
-                
-                // Process the JSON file
-                await processJsonFile(file);
-            });
-        }
-        
-        /**
-         * Process the uploaded JSON file and start verification
-         * @param {File} file - The uploaded JSON file
-         */
-        async function processJsonFile(file) {
-            try {
-                updateStatus('Loading face ID data...', 50);
-                
-                // Read and parse the file
-                const text = await file.text();
-                let parsed;
-                
-                try {
-                    parsed = JSON.parse(text);
-                } catch (parseError) {
-                    showToast('Invalid JSON format. The file might be corrupted.', 'error');
-                    updateStatus('Error: Invalid JSON format', 0);
-                    return;
-                }
-                
-                // Convert the data to descriptors
-                const descriptors = convertToDescriptors(parsed);
-                
-                if (descriptors.length === 0) {
-                    showToast('No valid face descriptors found in the JSON file. Please upload a valid face ID file.', 'error');
-                    updateStatus('Error: Invalid face ID data', 0);
-                    return;
-                }
-
-                // Set descriptors for verification
-                setDescriptors(descriptors);
-                showToast('Face ID loaded successfully', 'success');
-                
-                // Update UI
-                updateStepper(2);
-                updateStatus('Starting camera for verification...', 70);
-                
-                // Show face detection section
-                document.getElementById('face-detection-section').style.display = 'block';
-                
-                // Only start camera and face detection if models are loaded
-                if (modelsLoaded && worker) {
-                    // Start camera and face detection
-                    await startVerification();
-                } else {
-                    showToast('Cannot start verification: Face detection models not loaded', 'error');
-                    updateStatus('Error: Face detection models not loaded', 0);
-                }
-            } catch (error) {
-                console.error('Error processing JSON:', error);
-                showToast('Failed to process JSON: ' + error.message, 'error');
-                updateStatus('Error loading face ID file', 0);
-            }
-        }
-        
-        /**
-         * Convert parsed JSON data to Float32Array descriptors
-         * @param {Object|Array} data - The parsed JSON data
-         * @returns {Float32Array[]} Array of descriptors
-         */
-        function convertToDescriptors(data) {
-            // Handle different JSON structures
-            let items = [];
-            
-            if (Array.isArray(data)) {
-                items = data;
-            } else if (data && typeof data === 'object') {
-                items = Object.values(data);
-            } else {
-                return [];
-            }
-            
-            return items
-                .map(item => {
-                    // Handle array format
-                    if (Array.isArray(item) && item.length > 0) {
-                        return new Float32Array(item);
-                    }
-                    // Handle object format
-                    if (item && typeof item === 'object') {
-                        const values = Object.values(item);
-                        if (values.length > 0) {
-                            return new Float32Array(values);
-                        }
-                    }
-                    return null;
-                })
-                .filter(d => d !== null);
-        }
-        
-        /**
-         * Sets up continuous camera preview on the canvas
-         * This ensures that the camera feed is visible even before face detection results arrive
-         */
-        function setupCameraPreview() {
-            console.log('🎥 Setting up camera preview in module script');
-            const video = document.getElementById('video');
-            const canvas = document.getElementById('output-canvas');
-            
-            if (!canvas || !video) {
-                console.error('❌ Video or canvas element not found in module script');
-                return;
-            }
-            
-            console.log('🖼️ Getting canvas context');
-            const ctx = canvas.getContext('2d');
-            
-            // Track face detection status
-            window.faceDetectionStatus = {
-                faceDetected: false,
-                lastUpdated: Date.now(),
-                message: 'Waiting for face verification...'
-            };
-            
-            // Draw video frame to canvas continuously
-            function drawVideoFrame() {
-                if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                    // Set canvas size to match video
-                    if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-                        canvas.width = video.videoWidth;
-                        canvas.height = video.videoHeight;
-                        console.log(`🖼️ Canvas dimensions set to: ${canvas.width}x${canvas.height}`);
-                    }
-                    
-                    // Draw the video frame
-                    ctx.drawImage(video, 0, 0);
-                    
-                    // Add a message while waiting for face verification
-                    // Use the status from the global variable that can be updated by detection.js
-                    ctx.font = '24px Arial';
-                    ctx.fillStyle = 'white';
-                    ctx.strokeStyle = 'black';
-                    ctx.lineWidth = 2;
-                    
-                    const message = window.faceDetectionStatus ? window.faceDetectionStatus.message : 'Waiting for face verification...';
-                    const textWidth = ctx.measureText(message).width;
-                    const x = (canvas.width - textWidth) / 2;
-                    const y = 40;
-                    
-                    ctx.strokeText(message, x, y);
-                    ctx.fillText(message, x, y);
-                    
-                    // If more than 5 seconds have passed since last status update, reset to waiting
-                    const now = Date.now();
-                    if (now - window.faceDetectionStatus.lastUpdated > 5000) {
-                        window.faceDetectionStatus.message = 'Waiting for face verification...';
-                        window.faceDetectionStatus.faceDetected = false;
-                    }
-                }
-                
-                // Continue drawing only if video is playing and not paused
-                if (!video.paused && !video.ended) {
-                    requestAnimationFrame(drawVideoFrame);
-                }
-            }
-            
-            // Start drawing when video starts playing
-            video.addEventListener('play', () => {
-                console.log('▶️ Video play event captured in module script, starting animation frame');
-                drawVideoFrame();
-            });
-            
-            // Start animation if video is already playing
-            if (video.readyState >= 2 && !video.paused && !video.ended) {
-                console.log('▶️ Video is already playing, starting animation frame directly');
-                drawVideoFrame();
-            }
-        }
-        
-        /**
-         * Start the camera and face verification process
-         */
-        async function startVerification() {
-            try {
-                console.log('🎬 Starting verification process');
-                
-                // Double check that models are loaded before starting
-                if (!modelsLoaded) {
-                    const error = new Error('Face detection models are not loaded');
-                    console.error('❌', error.message);
-                    showToast(error.message, 'error');
-                    throw error;
-                }
-                
-                // Start camera
-                console.log('🎥 Starting camera');
-                await startCamera();
-                
-                // Set up canvas preview 
-                console.log('🖼️ Setting up camera preview');
-                setupCameraPreview();
-                
-                // Hook into detection.js message handling
-                const originalUpdateStatus = window.updateStatus || function() {};
-                window.updateStatus = function(message, progress) {
-                    console.log(`🔄 Status update: ${message} (${progress}%)`);
-                    
-                    // Update global face detection status for the canvas to use
-                    if (message.includes('Face detected')) {
-                        window.faceDetectionStatus = {
-                            faceDetected: true,
-                            lastUpdated: Date.now(),
-                            message: 'Face detected! Processing verification...'
-                        };
-                        console.log('✅ Face detected, updated status');
-                    } else if (message.includes('No face detected')) {
-                        window.faceDetectionStatus = {
-                            faceDetected: false,
-                            lastUpdated: Date.now(),
-                            message: 'No face detected. Please look at the camera.'
-                        };
-                        console.log('❌ No face detected, updated status');
-                    }
-                    
-                    // Call the original function
-                    originalUpdateStatus(message, progress);
-                };
-                
-                // Start detection with worker that has models loaded
-                if (worker) {
-                    console.log('🔍 Initializing face detection');
-                    initDetection(worker);
-                    updateStatus('Ready for face verification', 100);
-                    updateStepper(3);
-                } else {
-                    throw new Error('Face detection worker not initialized');
-                }
-            } catch (error) {
-                console.error('❌ Error starting verification:', error);
-                showToast('Failed to start camera: ' + error.message, 'error');
-                updateStatus('Error starting verification', 0);
-            }
-        }
-    </script>
-    <script>
-    // Add a function to manually test if face detection is working
-    function testFaceDetection() {
-        console.log('🧪 Manual face detection test initiated');
+    // Register SW, load models
+    async function initialize() {
         try {
-            // Log current face detection status
-            console.log('Current face detection status:', window.faceDetectionStatus);
-            console.log('Models loaded:', window.modelsLoaded);
-            
-            // Update model status UI
-            const statusElement = document.getElementById('model-status');
-            if (statusElement) {
-                statusElement.innerHTML = '<span class="loading-spinner"></span> Testing face detection models...';
-            }
-            
-            // Add one-time listener for test response
-            const testResponseHandler = function(event) {
-                if (event.data && event.data.type === 'TEST_RESULT') {
-                    console.log('📊 Received test results from service worker:', event.data.status);
-                    
-                    // If models aren't loaded, show an error
-                    if (!event.data.status.isModelLoaded) {
-                        console.error('❌ Face detection models are not loaded!');
-                        window.faceDetectionStatus = {
-                            faceDetected: false,
-                            lastUpdated: Date.now(),
-                            message: 'Error: Face detection models not loaded!'
-                        };
-                        
-                        // Update model status UI
-                        if (statusElement) {
-                            statusElement.textContent = '❌ Error: Face detection models are not loaded!';
-                            statusElement.style.color = 'red';
-                        }
-                    } else {
-                        console.log('✅ Face detection models are loaded correctly');
-                        window.modelsLoaded = true;
-                        
-                        // Update model status UI
-                        if (statusElement) {
-                            statusElement.textContent = '✅ Face detection models are loaded and ready!';
-                            statusElement.style.color = 'green';
-                        }
-                    }
-                    
-                    // Remove the listener after receiving the response
-                    navigator.serviceWorker.removeEventListener('message', testResponseHandler);
-                }
-            };
-            
-            // Add the listener
-            navigator.serviceWorker.addEventListener('message', testResponseHandler);
-            
-            // Check if service worker is active
-            navigator.serviceWorker.getRegistration().then(reg => {
-                if (reg && reg.active) {
-                    console.log('✅ Service worker is active:', reg.active.scriptURL);
-                    
-                    // Send a ping to the service worker
-                    reg.active.postMessage({ 
-                        type: 'TEST_FACE_DETECTION',
-                        timestamp: Date.now()
-                    });
-                    
-                    console.log('📤 Test message sent to service worker');
-                } else {
-                    console.log('❌ No active service worker found');
-                    if (statusElement) {
-                        statusElement.textContent = '❌ Error: No active service worker found';
-                        statusElement.style.color = 'red';
-                    }
-                }
-            });
-            
-            return '🧪 Test initiated, check console for results';
-        } catch (error) {
-            console.error('❌ Test failed:', error);
-            // Update model status UI
-            const statusElement = document.getElementById('model-status');
-            if (statusElement) {
-                statusElement.textContent = `❌ Test failed: ${error.message}`;
-                statusElement.style.color = 'red';
-            }
-            return '❌ Test failed: ' + error.message;
+            updateStatus('Registering service worker...', 10);
+            await registerServiceWorker();
+
+            updateStatus('Loading face models...', 20);
+            worker = await initWorker(handleDetectionResult);
+            if (!worker) throw new Error('Worker init failed');
+
+            updateStatus('Models loaded.', 100);
+            showToast('Models ready. Please upload your face ID JSON.', 'success');
+
+            // Enable upload controls
+            fileInput.disabled = false;
+            submitBtn.disabled = false;
+            document.getElementById('model-status').textContent = '';
+            setupUploadHandler();
+        } catch (err) {
+            console.error(err);
+            updateStatus('Error: ' + err.message, 0);
+            showToast('Initialization failed: ' + err.message, 'error');
         }
     }
-    
-    document.addEventListener('DOMContentLoaded', async () => {
-        try {
-            console.log('🚀 Secondary script initializing');
-            // Get DOM elements
-            const statusElement = document.querySelector('.status-indicator__text');
-            const videoEl = document.getElementById('video');
-            const canvasEl = document.getElementById('output-canvas');
 
-            if (!videoEl || !canvasEl) {
-                console.error('❌ Video or Canvas element not found in secondary script');
-                return;
-            }
-
-            // Only run this if we're not using the module system
-            if (typeof window.workerInitialized === 'undefined') {
-                console.log('🔄 Secondary script running as module not initialized');
-                // Update status and start camera first
-                statusElement.textContent = 'Starting camera...';
-                await setupCamera();
-                statusElement.textContent = 'Camera started. Setting up canvas preview...';
-
-                // Setup canvas
-                const ctx = canvasEl.getContext('2d');
-                
-                // Function to draw video frame on canvas
-                function drawVideoFrame() {
-                    if (!videoEl || !canvasEl || !ctx) {
-                        console.error('❌ Video, Canvas, or Context not available');
-                        return;
-                    }
-                    
-                    // Make sure canvas dimensions match video
-                    if (canvasEl.width !== videoEl.videoWidth || canvasEl.height !== videoEl.videoHeight) {
-                        canvasEl.width = videoEl.videoWidth;
-                        canvasEl.height = videoEl.videoHeight;
-                        console.log(`🖼️ Canvas dimensions set to: ${canvasEl.width}x${canvasEl.height} in secondary script`);
-                    }
-                    
-                    // Draw the video frame
-                    if (videoEl.readyState === videoEl.HAVE_ENOUGH_DATA) {
-                        ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
-                        
-                        // Get status from the global variable that can be updated by the module script
-                        const status = window.faceDetectionStatus || { 
-                            message: 'Waiting for face detection module to initialize...' 
-                        };
-                        
-                        // Add text indicating waiting for face
-                        ctx.font = '20px Arial';
-                        ctx.fillStyle = 'white';
-                        ctx.fillText(status.message, 20, 30);
-                        
-                        // Log status periodically (every 3 seconds) to not flood the console
-                        const now = Date.now();
-                        if (!window.lastStatusLog || now - window.lastStatusLog > 3000) {
-                            console.log(`🔄 Current face detection status: ${status.message}`);
-                            window.lastStatusLog = now;
-                        }
-                    }
-                    
-                    // Continue drawing frames
-                    requestAnimationFrame(drawVideoFrame);
-                }
-                
-                // Mark that we've initialized
-                window.workerInitialized = true;
-                console.log('✅ Marked worker as initialized in secondary script');
-                
-                // Start drawing video frames
-                console.log('🎬 Starting canvas animation in secondary script');
-                drawVideoFrame();
-            } else {
-                console.log('ℹ️ Secondary script skipped as module system is active');
-            }
-            
-            async function setupCamera() {
-                try {
-                    const constraints = {
-                        video: {
-                            width: 640,
-                            height: 480,
-                            facingMode: 'user'
-                        }
-                    };
-                    
-                    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                    videoEl.srcObject = stream;
-                    
-                    return new Promise((resolve) => {
-                        videoEl.onloadedmetadata = () => {
-                            videoEl.play();
-                            resolve();
-                        };
-                    });
-                } catch (error) {
-                    console.error('Error setting up camera:', error);
-                    statusElement.textContent = `Error setting up camera: ${error.message}`;
-                    throw error;
-                }
-            }
-
-            // Update verification status
-            function updateVerificationStatus(isVerified) {
-                if (isVerified) {
-                    statusElement.textContent = 'Face verified successfully!';
-                    statusElement.style.color = 'green';
-                } else {
-                    statusElement.textContent = 'Face verification failed!';
-                    statusElement.style.color = 'red';
-                }
-            }
-
-            // Note: The faceVerificationElement click handler is commented out as it's handled by the module system
-            // Uncomment and adapt if needed for direct verification without modules
-            /*
-            faceVerificationElement.addEventListener('click', async () => {
-                try {
-                    statusElement.textContent = 'Verifying face...';
-                    
-                    // Capture current frame from canvas
-                    const imageData = canvasEl.toDataURL('image/png');
-                    
-                    // Send the image to the server for verification
-                    const response = await fetch('/verify-face', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ image: imageData })
-                    });
-                    
-                    const result = await response.json();
-                    
-                    // Update verification status based on server response
-                    updateVerificationStatus(result.verified);
-                    
-                } catch (error) {
-                    console.error('Error during face verification:', error);
-                    statusElement.textContent = `Error: ${error.message}`;
-                }
-            });
-            */
-        } catch (error) {
-            console.error('Error in main process:', error);
-            document.querySelector('.status-indicator__text').textContent = `Error: ${error.message}`;
+    // Handle messages from worker
+    function handleDetectionResult({ detections }) {
+        drawImageDataToCanvas(detections, 'output-canvas');
+        if (detections && detections[0] && detections[0][0] && detections[0][0].descriptor) {
+            const desc = new Float32Array(detections[0][0].descriptor);
+            handleVerify(desc);
         }
+    }
+
+    // Set up JSON upload
+    function setupUploadHandler() {
+        submitBtn.addEventListener('click', async () => {
+            const file = fileInput.files[0];
+            if (!file) { showToast('Select a JSON file', 'error'); return; }
+
+            updateStatus('Reading JSON...', 30);
+            const text = await file.text();
+            let data;
+            try { data = JSON.parse(text); }
+            catch { showToast('Invalid JSON', 'error'); updateStatus('JSON parse error', 0); return; }
+
+            const descriptors = Object.values(data).map(d => new Float32Array(d));
+            setDescriptors(descriptors);
+            updateStepper(2);
+            updateStatus('Starting camera for detection...', 60);
+
+            // Show detection UI
+            detectionSection.style.display = 'block';
+
+            // Set up detection loop before starting the camera
+            initDetection(worker);
+
+            // Start camera, which will trigger the play event
+            await startCamera();
+            updateStatus('Face detection running...', 80);
+            updateStatus('Verification in progress...', 100);
+        });
+    }
+
+    // Register service worker
+    async function registerServiceWorker() {
+        if ('serviceWorker' in navigator) {
+            const reg = await navigator.serviceWorker.register('./js/faceDetectionServiceWorker.js', { scope: './' });
+            await navigator.serviceWorker.ready;
+            console.log('SW ready:', reg.scope);
+        } else {
+            throw new Error('SW not supported');
+        }
+    }
+
+    // Start initialization after DOM is loaded
+    document.addEventListener('DOMContentLoaded', () => {
+        // Get DOM elements after DOM ready
+        fileInput = document.getElementById('jsonFileInput');
+        submitBtn = document.getElementById('submit-json');
+        detectionSection = document.getElementById('face-detection-section');
+        setAction('verify');
+
+        if (!fileInput || !submitBtn || !detectionSection) {
+            console.error('❌ Required DOM elements missing');
+            return;
+        }
+        // Disable controls until models are ready
+        fileInput.disabled = true;
+        submitBtn.disabled = true;
+        initialize();
     });
     </script>
 </body>

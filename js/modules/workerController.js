@@ -2,7 +2,7 @@
 
 import { updateStatus, showToast } from './ui.js';
 
-const SERVICE_WORKER_SCRIPT = './faceDetectionServiceWorker.js';
+const SERVICE_WORKER_SCRIPT = './js/faceDetectionServiceWorker.js';
 const SERVICE_WORKER_NAME = 'faceDetectionServiceWorker.js';
 
 /**
