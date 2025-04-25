@@ -1,3 +1,4 @@
+
 var videoId = "video";
 var canvasId = "canvas";
 var canvasId2 = "canvas2";
@@ -10,8 +11,8 @@ var vle_facebox_yn = "y" ; // y / n
 
 var isWorkerReady = false;
 var worker = "";
-var serviceWorkerFileName = "service-worker.js";
-var serviceWorkerFilePath = "/service-worker.js";
+var serviceWorkerFileName = "faceDetectionServiceWorker.js";
+var serviceWorkerFilePath = "./js/faceDetectionServiceWorker.js";
 var imgFaceFilePathForWarmup = "./models/face_for_loading.png";
 
 if(typeof face_detector_options_setup === "undefined" || face_detector_options_setup === "undefined"){
@@ -98,11 +99,7 @@ function video_face_detection() {
 		canvas.width = video.videoWidth;
 		canvas.height = video.videoHeight;
 		function step() {
-			// Wait for worker & models to be ready
-			if (!isWorkerReady) {
-				setTimeout(step, step_fps);
-				return;
-			}
+			
 			context.drawImage(video, 0, 0, canvas.width, canvas.height);
 			const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
 			imageData.willReadFrequently = true; 
@@ -115,10 +112,12 @@ function video_face_detection() {
 			});
 			
 			if(video.paused !== true){
+				//requestAnimationFrame(step);
 				setTimeout(step, step_fps);
 			}
 			
 		}
+		//requestAnimationFrame(step);
 		setTimeout(step, step_fps);
 	});
 }
@@ -167,44 +166,17 @@ async function drawImageDataToCanvas(detections, canvasId) {
     }
 }
 
-/**
- * Draw face landmarks on canvas2 using the provided landmark positions.
- * @param {Array} landmarks Array of {x,y} or {_x,_y} points
- */
-function draw_face_landmarks(landmarks) {
-    const video = document.getElementById(videoId);
-    const canvas = document.getElementById(canvasId2);
-    if (!canvas || !landmarks || !landmarks.length) return;
-    const ctx = canvas.getContext('2d');
-    // Match canvas size to video
-    canvas.style.display = 'block';
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    // Clear any previous drawing
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = 'red';
-    ctx.strokeStyle = 'red';
-    ctx.lineWidth = 2;
-    // Draw each landmark point
-    landmarks.forEach(pt => {
-        const x = pt.x !== undefined ? pt.x : pt._x;
-        const y = pt.y !== undefined ? pt.y : pt._y;
-        ctx.beginPath();
-        ctx.arc(x, y, 2, 0, 2 * Math.PI);
-        ctx.fill();
-    });
-    // Optionally connect first few landmarks
-    if (landmarks.length >= 5) {
-        ctx.beginPath();
-        const start = landmarks[0];
-        ctx.moveTo(start.x !== undefined ? start.x : start._x, start.y !== undefined ? start.y : start._y);
-        landmarks.slice(1, 5).forEach(pt => {
-            const x = pt.x !== undefined ? pt.x : pt._x;
-            const y = pt.y !== undefined ? pt.y : pt._y;
-            ctx.lineTo(x, y);
-        });
-        ctx.stroke();
-    }
+function drawLandmarks(landmarks) {
+	const canvas = document.getElementById('canvas2');
+	const ctx = canvas.getContext('2d');
+	ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear previous drawings
+
+	ctx.fillStyle = 'red'; // Color for landmarks
+	landmarks.forEach(landmark => {
+		ctx.beginPath();
+		ctx.arc(landmark.x, landmark.y, 2, 0, 2 * Math.PI); // Draw small circles
+		ctx.fill();
+	});
 }
 
 // Function to draw the face bounding box on the canvas
@@ -260,6 +232,52 @@ function draw_face_box(canvas_id, box, confidence) {
         // Draw the confidence text above the bounding box
         context.fillText(confidenceText, textX, textY);  // Draw the confidence percentage above the box
     }
+}
+
+
+// Function to draw the face landmarks on the canvas
+function draw_face_landmarks() {
+	
+	var video = document.getElementById(videoId);
+	var canvas = document.getElementById(canvasId2);
+	var ctx = canvas.getContext('2d');
+	
+	console.log(typeof canvas);
+	if(typeof canvas === "object"){
+		canvas.style.display = "block";
+		
+		// Set canvas dimensions to match video dimensions
+		canvas.width = video.videoWidth;  // Use video.videoWidth for accurate dimensions
+		canvas.height = video.videoHeight; // Use video.videoHeight for accurate dimensions// Optional: Adjust canvas position using CSS
+		//canvas.style.marginTop = `-${video.videoHeight}px`; // Move canvas up by video height if needed
+		
+		// Get the landmarks
+		var landmarks = event.data.data.detections[0][0].landmarks._positions;
+		
+		// Clear the canvas
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+		// Set styles for drawing
+		ctx.fillStyle = 'red'; // Color for landmarks
+		ctx.strokeStyle = 'red'; // Color for landmark lines, if needed
+		ctx.lineWidth = 2; // Line width for any lines drawn between landmarks
+
+		// Draw each landmark as a circle
+		landmarks.forEach(landmark => {
+			ctx.beginPath();
+			ctx.arc(landmark._x, landmark._y, 2, 0, 2 * Math.PI); // Draw a small circle at each landmark
+			ctx.fill();
+		});
+
+		// Optionally, draw lines between specific landmarks if needed (e.g., connecting certain features)
+		// Example: Connect the first few landmarks (adjust based on your needs)
+		ctx.beginPath();
+		ctx.moveTo(landmarks[0]._x, landmarks[0]._y); // Start from the first landmark
+		landmarks.slice(1, 5).forEach(landmark => { // Connect the first 4 landmarks
+			ctx.lineTo(landmark._x, landmark._y);
+		});
+		ctx.stroke();
+	}
 }
 
 var registeredDescriptors = [];
@@ -344,7 +362,6 @@ async function initWorkerAddEventListener() {
 		switch (event.data.type) {
 			case 'MODELS_LOADED':
 			console.log('Face detection models loaded.');
-			isWorkerReady = true;
 			faceapi_warmup();
 			break;
 			case 'DETECTION_RESULT':
@@ -374,16 +391,19 @@ async function initWorkerAddEventListener() {
 				try{drawImageDataToCanvas(event.data.data.detections, canvasOutputId);}catch(err){console.log(err);}
 			}
 			
-			// Draw landmarks if enabled
-			if (vle_face_landmark_position_yn === 'y') {
-				const faces = event.data.data.detections[0];
-				if (faces && faces.length > 0) {
-					console.log('drawFaceLandmarks');
-					const lmPositions = faces[0].landmarks._positions;
-					draw_face_landmarks(lmPositions);
-				} else {
-					document.getElementById(canvasId2).style.display = 'none';
-				}
+			if(typeof vle_face_landmark_position_yn === "string"){
+				if(vle_face_landmark_position_yn == "y"){
+					
+					var temp_canvas_id = canvasId2;
+					var temp_canvas = document.getElementById(temp_canvas_id);
+					
+					if (event.data.data.detections[0] !== null) {
+						console.log("drawFaceLandmarks");
+						draw_face_landmarks();
+					}else{
+						temp_canvas.style.display = "none";
+					}
+				}	
 			}
 			
 			
@@ -437,10 +457,23 @@ async function initWorkerAddEventListener() {
 
 async function workerRegistration() {
 	if ('serviceWorker' in navigator) {
-		// Register and wait until the service worker is active
-		await navigator.serviceWorker.register(serviceWorkerFilePath);
-		const reg = await navigator.serviceWorker.ready;
-		worker = reg.active;
+		// Get the existing registrations
+		var registrations = await navigator.serviceWorker.getRegistrations();
+		console.log(registrations);
+		// Check if the specific service worker is already registered
+		var existingRegistration = registrations.find(
+			reg => reg.active && reg.active.scriptURL.endsWith(serviceWorkerFileName)
+		);
+		console.log(existingRegistration);
+		if(typeof existingRegistration === "undefined" || existingRegistration === "undefined"){
+			console.log("existingRegistration : undefined");
+			// Register the service worker if not already registered
+			var registration = await navigator.serviceWorker.register(serviceWorkerFilePath);
+			worker = registration.active;
+		}else{
+			worker = existingRegistration.active;
+		}
+		
 	} else {
 		console.error('Service workers are not supported in this browser.');
 	}
@@ -451,26 +484,30 @@ function delay(ms) {
 }
 
 async function load_model() {
+	
 	await workerRegistration();
-	// Trigger model load; readiness will be signaled via MODELS_LOADED
-	worker.postMessage({ type: 'LOAD_MODELS' });
+	await worker.postMessage({ type: 'LOAD_MODELS' });
 }
 
 async function initWorker() {
     if ('serviceWorker' in navigator) {
         try {
+            // Optionally uncomment if needed
+            // await unregisterAllServiceWorker();
+
             console.log("Registering service worker...");
             await workerRegistration(); // Wait for worker registration
 
             console.log("Adding event listeners...");
             await initWorkerAddEventListener(); // Wait for event listeners to be added
 
-            console.log("Waiting for 0.5 second...");
-            await delay(500); // Allow worker activation
+            console.log("Waiting for 1 second...");
+            await delay(500); // Wait for 1 second to give the service worker some time to activate. If not, when the service worker is created for the first time, posting a message will cause an error and stop everything.
 
             console.log("Loading model...");
             await load_model(); // Wait for the model to load
             
+            isWorkerReady = true; // Set the worker as ready
             console.log("Worker initialized successfully.");
         } catch (error) {
             console.error("Error initializing worker:", error);
