@@ -15,6 +15,38 @@
 			.overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;display:none;border-radius:8px}
 			.snapshot{border:2px solid #333;background:rgba(255,255,255,.7);box-shadow:0 4px 10px rgba(0,0,0,.1);display:none;width:640px;height:480px;border-radius:8px}
 			@media(max-width:768px){.video-wrapper{width:100%}.snapshot{max-width:480px}}
+			/* Full-screen responsive container */
+			.face-detection-container{
+				width:100vw;
+				height:100vh;
+				display:flex;
+				justify-content:center;
+				align-items:center;
+				flex-wrap:wrap;
+				gap:1rem;
+				padding:1rem; /* small padding to prevent hard edge touching */
+				box-sizing:border-box;
+			}
+
+			/* Ensure the video wrapper scales while keeping the 4/3 aspect ratio */
+			.video-wrapper{
+				width:min(100vw,calc(100vh * 4 / 3)); /* fit inside viewport without cropping */
+				max-width:100%;
+			}
+
+			/* Video element keeps its intrinsic ratio */
+			#video{
+				width:100%;
+				height:auto;
+				object-fit:contain;
+			}
+
+			/* Snapshot canvas follows video size */
+			.snapshot{
+				width:100%;
+				height:auto;
+				max-height:100vh;
+			}
 		</style>
 		
 		<!-- Service Worker Warmup [start] -->
@@ -33,7 +65,7 @@
 		
 		<input type="file" id="jsonFileInput" accept=".json" onchange="handleJsonFileInput(event)">
 		
-		<div class="face-detection-container" style="display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;">
+		<div class="face-detection-container">
 			<div class="video-wrapper">
 				<video id="video" width="640" height="480" autoplay playsinline muted></video>
 				<canvas id="canvas" class="overlay"></canvas>

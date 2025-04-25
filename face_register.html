@@ -90,6 +90,39 @@
 					max-width: 480px;
 				}
 			}
+
+			/* Full-screen responsive container */
+			.face-detection-container{
+				width:100vw;
+				height:100vh;
+				display:flex;
+				justify-content:center;
+				align-items:center;
+				flex-wrap:wrap;
+				gap:1rem;
+				padding:1rem;
+				box-sizing:border-box;
+			}
+
+			/* Ensure the video wrapper scales while keeping the 4/3 aspect ratio */
+			.video-wrapper{
+				width:min(100vw,calc(100vh * 4 / 3));
+				max-width:100%;
+			}
+
+			/* Video element keeps its intrinsic ratio */
+			#video{
+				width:100%;
+				height:auto;
+				object-fit:contain;
+			}
+
+			/* Snapshot canvas follows video size */
+			.snapshot{
+				width:100%;
+				height:auto;
+				max-height:100vh;
+			}
 		</style>
 		
 		<!-- Service Worker Warmup [start] -->
