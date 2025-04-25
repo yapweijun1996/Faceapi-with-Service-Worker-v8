@@ -12,6 +12,14 @@
 </head>
 <body>
   <h1>Face Registration</h1>
+  <script>
+    // Ensure service worker is registered and controls this page
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('js/faceDetectionServiceWorker.js', { scope: './' })
+        .then(() => console.log('SW registered on register page'))
+        .catch(console.error);
+    }
+  </script>
   <p>
     Allow camera access, center your face in the box, then click 
     <strong>Register</strong>.

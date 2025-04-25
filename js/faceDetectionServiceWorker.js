@@ -5,6 +5,9 @@ importScripts('face-api.min.js');
 let clientsList = [];
 let isModelLoaded = false;
 
+// Default threshold for face verification (euclidean distance)
+const DEFAULT_VERIFY_THRESHOLD = 0.6;
+
 var FaceDetectorOptionsDefault = new faceapi.TinyFaceDetectorOptions({
 	inputSize: 128,
 	scoreThreshold: 0.1,
@@ -81,11 +84,13 @@ function broadcast(message) {
 
 self.addEventListener('message', async function(event) {
     const client = event.source;
+    // If a MessageChannel port was passed, use it for replying
+    const port = event.ports && event.ports[0];
     if (!clientsList.includes(client)) {
         clientsList.push(client);
     }
 
-    const { type, imageData, width, height, face_detector_options } = event.data;
+    const { type, imageData, width, height, face_detector_options, image, targetDescriptor, threshold } = event.data;
 	if(typeof face_detector_options === "undefined" || face_detector_options === "undefined"){
 		face_for_loading_options = FaceDetectorOptionsDefault;
 	}else{
@@ -100,24 +105,60 @@ self.addEventListener('message', async function(event) {
             break;
         case 'DETECT_FACES':
             detections = await detectFaces(imageData, width, height);
+            // send detection result back to the requesting client
             client.postMessage({
                 type: 'DETECTION_RESULT',
-                data: {
-                    detections: detections,
-                    displaySize: { width, height }
-                }
+                data: { detections: detections, displaySize: { width, height } }
             });
             break;
         case 'WARMUP_FACES':
             detections = await detectFaces(imageData, width, height);
             client.postMessage({
                 type: 'WARMUP_RESULT',
-                data: {
-                    detections: detections,
-                    displaySize: { width, height }
-                }
+                data: { detections: detections, displaySize: { width, height } }
             });
             break;
+        case 'REGISTER_REQUEST': {
+            // Ensure models are loaded before registration
+            if (!isModelLoaded) {
+                await checkModelsLoaded();
+            }
+            // Draw ImageBitmap to OffscreenCanvas
+            const img = image;
+            const regCanvas = new OffscreenCanvas(img.width, img.height);
+            const regCtx = regCanvas.getContext('2d');
+            regCtx.drawImage(img, 0, 0);
+            // Detect single face and descriptor
+            const regResult = await faceapi.detectSingleFace(regCanvas, face_for_loading_options)
+                .withFaceLandmarks()
+                .withFaceDescriptor();
+            if (regResult && regResult.descriptor) {
+                port && port.postMessage({ descriptor: Array.from(regResult.descriptor) });
+            } else {
+                port && port.postMessage({ error: 'No face detected' });
+            }
+        } break;
+        case 'VERIFY_REQUEST': {
+            // Ensure models loaded before verification
+            if (!isModelLoaded) {
+                await checkModelsLoaded();
+            }
+            const img2 = image;
+            const verCanvas = new OffscreenCanvas(img2.width, img2.height);
+            const verCtx = verCanvas.getContext('2d');
+            verCtx.drawImage(img2, 0, 0);
+            const verResult = await faceapi.detectSingleFace(verCanvas, face_for_loading_options)
+                .withFaceLandmarks()
+                .withFaceDescriptor();
+            if (verResult && verResult.descriptor) {
+                const distance = faceapi.euclideanDistance(targetDescriptor, verResult.descriptor);
+                const thr = typeof threshold === 'number' ? threshold : DEFAULT_VERIFY_THRESHOLD;
+                const match = distance < thr;
+                port && port.postMessage({ match, distance });
+            } else {
+                port && port.postMessage({ match: false, distance: null, error: 'No face detected' });
+            }
+        } break;
         default:
             console.log('Unknown message type:', type);
     }
