@@ -20,6 +20,19 @@ const DEFAULT_DETECTOR_OPTIONS = new faceapi.TinyFaceDetectorOptions({
 // Current detector options (may be overridden by messages)
 let currentDetectorOptions = DEFAULT_DETECTOR_OPTIONS;
 
+// Allow the worker to activate immediately when requested
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// When the service worker activates, claim all clients
+self.addEventListener('activate', event => {
+  console.log('Service worker activated and claiming clients');
+  event.waitUntil(self.clients.claim());
+});
+
 /**
  * Load all required face-api models
  * Returns a promise that resolves when models are loaded

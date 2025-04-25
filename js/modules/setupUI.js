@@ -1,4 +1,7 @@
-// SetupUI Module: initializes UI controls, visibility, and event handlers
+/**
+ * UI Setup Module
+ * Initializes UI controls, button visibility, and event handlers.
+ */
 
 import { showToast } from './ui.js';
 import { startCamera, stopCamera } from './camera.js';
@@ -69,17 +72,4 @@ export function setupUI() {
       }
     });
   }
-}
-
-/**
- * Update the wizard stepper UI (1-based index).
- * @param {number} stepIndex
- */
-export function updateStepper(stepIndex) {
-  const items = document.querySelectorAll('.stepper__item');
-  items.forEach((item, idx) => {
-    item.classList.remove('is-current', 'is-complete');
-    if (idx < stepIndex - 1) item.classList.add('is-complete');
-    else if (idx === stepIndex - 1) item.classList.add('is-current');
-  });
 } 
