@@ -58,17 +58,17 @@
 
 				.video-wrapper,
 				.snapshot{
+					aspect-ratio:9/16;
 					width:100vw;
-					height:100vh;
+					height:auto;
 					max-width:100vw;
 					max-height:100vh;
-					aspect-ratio:auto;
 				}
 
 				#video{
 					width:100%;
 					height:100%;
-					object-fit:cover; /* fill height, crop sides */
+					object-fit:contain; /* keep entire video visible and aligned */
 				}
 			}
 		</style>
