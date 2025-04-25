@@ -180,7 +180,29 @@
 		</div>
 
 		<script>
-			// Store functions in an array
+			/**
+			 * ================================
+			 * Face-API Configuration
+			 * -------------------------------
+			 * faceapi_action
+			 *   • "verify"   – Compare the live video frame against a previously
+			 *     registered reference descriptor (used in a face-verification flow).
+			 *   • "register" – Capture the detected face descriptor and store it as
+			 *     a new reference (used when enrolling a new user).
+			 *
+			 * face_detector_options_setup
+			 *   These options are forwarded to face-api.js TinyFaceDetector and allow
+			 *   you to balance performance vs. accuracy according to your use-case.
+			 *   • inputSize        – Dimension (square) of the NN input. Larger numbers
+			 *                         improve accuracy but require more computation.
+			 *   • scoreThreshold   – Minimum confidence score (0-1) that a detection
+			 *                         must reach to be considered valid. 0.8 = 80%.
+			 *   • maxDetectedFaces – Hard limit on how many faces should be processed
+			 *                         per frame. Keeping it at 1 speeds things up when
+			 *                         you only care about the user in front of the
+			 *                         camera.
+			 * ================================
+			 */
 			var faceapi_action = "register"; // verify, register
 			var warmup_completed = [camera_start, video_face_detection];
 			var face_detector_options_setup = {
