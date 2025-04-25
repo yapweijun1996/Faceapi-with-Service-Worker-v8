@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Verification</title>
+    <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+    <!-- Toast notifications container -->
+    <div id="toast-container" class="toast-container" aria-live="polite" role="region"></div>
+
+    <!-- Application Header -->
+    <header class="app-header">
+        <h1 class="app-header__title">Face Verification</h1>
+        <a href="app.html" class="app-header__back">Back</a>
+    </header>
+
+    <!-- Main Application Content -->
+    <main class="app-main">
+        <ol class="stepper">
+            <li class="stepper__item is-current">Upload JSON</li>
+            <li class="stepper__item">Start Camera</li>
+            <li class="stepper__item">Verify Face</li>
+        </ol>
+
+        <!-- Status Indicator Component -->
+        <section class="status-indicator" aria-live="polite">
+            <p class="status-indicator__text">Please upload your face ID JSON file</p>
+            <progress class="status-indicator__progress" value="0" max="100"></progress>
+        </section>
+
+        <!-- Upload Module for Descriptor JSON -->
+        <section id="upload-module" class="upload-module">
+            <label for="jsonFileInput" class="upload-module__label">Upload Face ID JSON:</label>
+            <input type="file" id="jsonFileInput" class="upload-module__input" accept=".json">
+            <button id="submit-json" class="button button--primary">Submit JSON</button>
+        </section>
+
+        <!-- Face Detection and Controls (initially hidden) -->
+        <section id="face-detection-section" class="face-section" aria-live="off" style="display: none;">
+            <div class="face-section__camera-container">
+                <video id="video" class="face-section__video" autoplay muted playsinline></video>
+                <canvas id="output-canvas" class="output-section__canvas" role="img" aria-label="Processed video with face overlays"></canvas>
+            </div>
+        </section>
+
+        <!-- User Instructions -->
+        <section class="instructions">
+            <p>
+                First, upload the face ID JSON file that was generated during registration.
+                After submitting, the camera will start automatically and validate your face against the stored data.
+            </p>
+        </section>
+    </main>
+
+    <!-- Load scripts -->
+    <script src="js/face-api.js"></script>
+    <script type="module">
+        import { updateStatus, showToast } from './js/modules/ui.js';
+        import { startCamera, getVideoElement } from './js/modules/camera.js';
+        import { initDetection } from './js/modules/detection.js';
+        import { initWorker } from './js/modules/workerController.js';
+        import { drawImageDataToCanvas } from './js/modules/renderer.js';
+        import { handleVerify, setAction, setDescriptors } from './js/modules/faceService.js';
+        import { updateStepper } from './js/modules/setupUI.js';
+
+        let worker = null;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Set action to verify
+            setAction('verify');
+            
+            // Initialize service worker and models but don't start detection yet
+            worker = await initWorker((payload) => {
+                const detections = payload.detections;
+                if (detections && detections[0] && detections[0][0] && detections[0][0].descriptor) {
+                    const descriptor = new Float32Array(detections[0][0].descriptor);
+                    handleVerify(descriptor);
+                }
+                drawImageDataToCanvas(detections, 'output-canvas');
+            });
+
+            // Set up JSON upload and submit button
+            const submitButton = document.getElementById('submit-json');
+            const fileInput = document.getElementById('jsonFileInput');
+            
+            submitButton.addEventListener('click', async () => {
+                const file = fileInput.files[0];
+                if (!file) {
+                    showToast('Please select a JSON file first', 'error');
+                    return;
+                }
+                
+                try {
+                    updateStatus('Loading face ID data...', 50);
+                    
+                    const text = await file.text();
+                    const parsed = JSON.parse(text);
+                    
+                    // Convert loaded data into Float32Array descriptors
+                    const descriptors = Object.values(parsed)
+                        .map(item => {
+                            if (Array.isArray(item)) return new Float32Array(item);
+                            if (item && typeof item === 'object') return new Float32Array(Object.values(item));
+                            return null;
+                        })
+                        .filter(d => d !== null);
+
+                    if (descriptors.length === 0) {
+                        showToast('No valid descriptors found in JSON', 'error');
+                        return;
+                    }
+
+                    // Set descriptors for verification
+                    setDescriptors(descriptors);
+                    showToast('Face ID loaded successfully', 'success');
+                    
+                    // Update stepper and status
+                    updateStepper(2);
+                    updateStatus('Starting camera for verification...', 70);
+                    
+                    // Show face detection section
+                    document.getElementById('face-detection-section').style.display = 'block';
+                    
+                    // Start camera
+                    await startCamera();
+                    
+                    // Start detection
+                    if (worker) {
+                        initDetection(worker);
+                        updateStatus('Ready for face verification', 100);
+                        updateStepper(3);
+                    }
+                } catch (error) {
+                    console.error('Error loading JSON:', error);
+                    showToast('Failed to load JSON. Make sure it is a valid face ID file.', 'error');
+                    updateStatus('Error loading face ID file', 0);
+                }
+            });
+        });
+    </script>
+</body>
+</html> 

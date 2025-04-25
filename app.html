@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Recognition App</title>
+    <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+    <!-- Toast notifications container -->
+    <div id="toast-container" class="toast-container" aria-live="polite" role="region"></div>
+
+    <!-- Application Header -->
+    <header class="app-header">
+        <h1 class="app-header__title">Face Recognition App</h1>
+    </header>
+
+    <!-- Main Application Content -->
+    <main class="app-main">
+        <section class="status-indicator" aria-live="polite">
+            <p class="status-indicator__text">Initializing service worker...</p>
+            <progress class="status-indicator__progress" value="0" max="100"></progress>
+        </section>
+
+        <div class="navigation-buttons">
+            <button id="register-button" class="button button--primary">Register Face</button>
+            <button id="verify-button" class="button button--secondary">Verify Face</button>
+        </div>
+    </main>
+
+    <!-- Load scripts -->
+    <script src="js/face-api.js"></script>
+    <script type="module">
+        import { updateStatus, showToast } from './js/modules/ui.js';
+
+        // Register the service worker
+        document.addEventListener('DOMContentLoaded', async () => {
+            updateStatus('Registering service worker...', 20);
+
+            if ('serviceWorker' in navigator) {
+                try {
+                    const registration = await navigator.serviceWorker.register('./js/faceDetectionServiceWorker.js');
+                    console.log('Service Worker registered with scope:', registration.scope);
+                    updateStatus('Service worker registered successfully', 100);
+                    showToast('Service worker ready', 'success');
+                } catch (error) {
+                    console.error('Service Worker registration failed:', error);
+                    updateStatus('Failed to register service worker', 0);
+                    showToast('Service worker registration failed', 'error');
+                }
+            } else {
+                updateStatus('Service Workers not supported in this browser', 0);
+                showToast('Service Workers not supported', 'error');
+            }
+            
+            // Set up navigation buttons
+            document.getElementById('register-button').addEventListener('click', () => {
+                window.location.href = 'face_resiter.html';
+            });
+            
+            document.getElementById('verify-button').addEventListener('click', () => {
+                window.location.href = 'verify_face.html';
+            });
+        });
+    </script>
+</body>
+</html> 
