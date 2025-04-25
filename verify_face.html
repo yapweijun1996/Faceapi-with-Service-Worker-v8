@@ -109,7 +109,7 @@
         </section>
     </main>
 
-    <!-- Load scripts -->
+    <!-- Load scripts and main logic -->
     <script src="js/face-api.js"></script>
     <script type="module">
     import { updateStatus, showToast } from './js/modules/ui.js';
@@ -120,99 +120,82 @@
     import { handleVerify, setAction, setDescriptors } from './js/modules/faceService.js';
     import { updateStepper } from './js/modules/setupUI.js';
 
-    let fileInput, submitBtn, detectionSection, worker;
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Grab UI elements
+      const fileInput = document.getElementById('jsonFileInput');
+      const submitBtn = document.getElementById('submit-json');
+      const detectionSection = document.getElementById('face-detection-section');
+      const videoEl = document.getElementById('video');
+      const canvasEl = document.getElementById('output-canvas');
 
-    // Register SW, load models
-    async function initialize() {
-        try {
-            updateStatus('Registering service worker...', 10);
-            await registerServiceWorker();
+      if (!fileInput || !submitBtn || !detectionSection || !videoEl || !canvasEl) {
+        console.error('Required elements missing');
+        return;
+      }
+      // Disable upload until models are ready
+      fileInput.disabled = true;
+      submitBtn.disabled = true;
 
-            updateStatus('Loading face models...', 20);
-            worker = await initWorker(handleDetectionResult);
-            if (!worker) throw new Error('Worker init failed');
+      try {
+        // Register and activate service worker
+        updateStatus('Registering service worker...', 10);
+        if (!('serviceWorker' in navigator)) throw new Error('Service Workers not supported');
+        await navigator.serviceWorker.register('./js/faceDetectionServiceWorker.js', { scope: './' });
+        await navigator.serviceWorker.ready;
 
-            updateStatus('Models loaded.', 100);
-            showToast('Models ready. Please upload your face ID JSON.', 'success');
-
-            // Enable upload controls
-            fileInput.disabled = false;
-            submitBtn.disabled = false;
-            document.getElementById('model-status').textContent = '';
-            setupUploadHandler();
-        } catch (err) {
-            console.error(err);
-            updateStatus('Error: ' + err.message, 0);
-            showToast('Initialization failed: ' + err.message, 'error');
-        }
-    }
-
-    // Handle messages from worker
-    function handleDetectionResult({ detections }) {
-        drawImageDataToCanvas(detections, 'output-canvas');
-        if (detections && detections[0] && detections[0][0] && detections[0][0].descriptor) {
-            const desc = new Float32Array(detections[0][0].descriptor);
-            handleVerify(desc);
-        }
-    }
-
-    // Set up JSON upload
-    function setupUploadHandler() {
-        submitBtn.addEventListener('click', async () => {
-            const file = fileInput.files[0];
-            if (!file) { showToast('Select a JSON file', 'error'); return; }
-
-            updateStatus('Reading JSON...', 30);
-            const text = await file.text();
-            let data;
-            try { data = JSON.parse(text); }
-            catch { showToast('Invalid JSON', 'error'); updateStatus('JSON parse error', 0); return; }
-
-            const descriptors = Object.values(data).map(d => new Float32Array(d));
-            setDescriptors(descriptors);
-            updateStepper(2);
-            updateStatus('Starting camera for detection...', 60);
-
-            // Show detection UI
-            detectionSection.style.display = 'block';
-
-            // Set up detection loop before starting the camera
-            initDetection(worker);
-
-            // Start camera, which will trigger the play event
-            await startCamera();
-            updateStatus('Face detection running...', 80);
-            updateStatus('Verification in progress...', 100);
-        });
-    }
-
-    // Register service worker
-    async function registerServiceWorker() {
-        if ('serviceWorker' in navigator) {
-            const reg = await navigator.serviceWorker.register('./js/faceDetectionServiceWorker.js', { scope: './' });
-            await navigator.serviceWorker.ready;
-            console.log('SW ready:', reg.scope);
-        } else {
-            throw new Error('SW not supported');
-        }
-    }
-
-    // Start initialization after DOM is loaded
-    document.addEventListener('DOMContentLoaded', () => {
-        // Get DOM elements after DOM ready
-        fileInput = document.getElementById('jsonFileInput');
-        submitBtn = document.getElementById('submit-json');
-        detectionSection = document.getElementById('face-detection-section');
+        // Load face detection models
+        updateStatus('Loading face detection models...', 30);
         setAction('verify');
+        const worker = await initWorker(({ detections }) => {
+          drawImageDataToCanvas(detections, 'output-canvas');
+          if (detections?.[0]?.[0]?.descriptor) {
+            handleVerify(new Float32Array(detections[0][0].descriptor));
+          }
+        });
+        if (!worker) throw new Error('Failed to initialize face detection worker');
 
-        if (!fileInput || !submitBtn || !detectionSection) {
-            console.error('❌ Required DOM elements missing');
+        updateStatus('Models loaded. Ready to upload JSON.', 100);
+        showToast('Models loaded successfully.', 'success');
+
+        // Enable JSON upload
+        fileInput.disabled = false;
+        submitBtn.disabled = false;
+
+        // Handle JSON upload
+        submitBtn.addEventListener('click', async () => {
+          if (!fileInput.files.length) {
+            showToast('Please select a JSON file', 'error');
             return;
-        }
-        // Disable controls until models are ready
-        fileInput.disabled = true;
-        submitBtn.disabled = true;
-        initialize();
+          }
+          updateStatus('Reading JSON...', 30);
+          let json;
+          try {
+            json = JSON.parse(await fileInput.files[0].text());
+          } catch {
+            showToast('Invalid JSON file', 'error');
+            updateStatus('Error: Invalid JSON', 0);
+            return;
+          }
+
+          // Set descriptors and update UI
+          setDescriptors(Object.values(json).map(arr => new Float32Array(arr)));
+          updateStepper(2);
+
+          // Show detection area and start camera
+          updateStatus('Starting camera...', 50);
+          detectionSection.style.display = 'block';
+          await startCamera();
+
+          // Start detection
+          updateStatus('Running face detection...', 70);
+          initDetection(worker);
+          updateStatus('Verification in progress...', 100);
+        });
+      } catch (error) {
+        console.error('Initialization error:', error);
+        updateStatus('Error: ' + error.message, 0);
+        showToast(error.message, 'error');
+      }
     });
     </script>
 </body>
