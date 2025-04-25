@@ -5,53 +5,16 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<title>Face Detection</title>
 		<style>
-			/* Basic reset */
-			* {
-				margin: 0;
-				padding: 0;
-				box-sizing: border-box;
-			}
-
-			body {
-				font-family: sans-serif;
-				display: flex;
-				flex-direction: column;
-				align-items: center;
-				gap: 1rem;
-				height: 100vh;
-				background: #f4f4f9;
-				color: #333;
-			}
-
-			a {
-				color: #007bff;
-				text-decoration: none;
-			}
-
-			a:hover {
-				text-decoration: underline;
-			}
-
-			#video, #canvas_output {
-				width: 100%;
-				max-width: 640px;
-				border-radius: 8px;
-			}
-
-			#video {
-				box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-			}
-
-			#canvas_output {
-				border: 2px solid #333;
-				background: rgba(255, 255, 255, 0.7);
-				box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-			}
-
-			/* hide helper canvases */
-			canvas:not(#canvas_output) {
-				display: none;
-			}
+			html,body{margin:0;padding:0;height:100%}
+			body{font-family:Arial,Helvetica,sans-serif;display:flex;flex-direction:column;align-items:center;gap:1rem;background:#f4f4f9;color:#333}
+			h1{font-size:1.8rem}
+			a{color:#007bff;text-decoration:none;font-size:1rem}
+			a:hover{text-decoration:underline}
+			#video,#canvas_output{max-width:100%;border-radius:8px;box-shadow:0 4px 10px rgba(0,0,0,.1)}
+			#video{width:640px}
+			#canvas_output{display:none;width:640px;height:480px;border:2px solid #333;background:rgba(255,255,255,.7)}
+			.hidden-canvas{display:none;position:absolute;width:100%}
+			@media(max-width:768px){#video{width:auto;height:100%}}
 		</style>
 		
 		<!-- Service Worker Warmup [start] -->
@@ -59,22 +22,22 @@
 		<script src="./js/face-api.min.js"></script>
 		<!-- Service Worker Warmup [end  ] -->
 		<script>
-			document.addEventListener('DOMContentLoaded',()=>{
-				document.getElementById('toIndex').onclick=()=>location.replace('index.html');
-			});
+			function urlReplace(url) {
+				window.location.replace(url); 
+			}
 		</script>
 	</head>
 	<body>
 		<h1>Face Detection</h1>
-		<a id="toIndex" href="#">Go to Index</a>
+		<a href="#" onclick="urlReplace('index.html')">Go to Index</a><br>
 		
 		<input type="file" id="jsonFileInput" accept=".json" onchange="handleJsonFileInput(event)">
 		
-		<div class="video-wrapper" style="padding:10px;width:100%">
-			<video id="video" autoplay playsinline muted></video>
-			<canvas id="canvas"></canvas>
-			<canvas id="canvas2"></canvas>
-			<canvas id="canvas3"></canvas>
+		<div style="width:100vw;padding:10px;display:flex;">
+			<video id="video" width="640" height="480" autoplay playsinline muted></video>
+			<canvas id="canvas" class="hidden-canvas"></canvas>
+			<canvas id="canvas2" class="hidden-canvas"></canvas>
+			<canvas id="canvas3" class="hidden-canvas"></canvas>
 			<canvas id="canvas_output"></canvas>
 		</div>
 
