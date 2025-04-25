@@ -10,11 +10,11 @@
 			h1{font-size:1.8rem}
 			a{color:#007bff;text-decoration:none;font-size:1rem}
 			a:hover{text-decoration:underline}
-			#video,#canvas_output{max-width:100%;border-radius:8px;box-shadow:0 4px 10px rgba(0,0,0,.1)}
-			#video{width:640px}
-			#canvas_output{display:none;width:640px;height:480px;border:2px solid #333;background:rgba(255,255,255,.7)}
-			.hidden-canvas{display:none;position:absolute;width:100%}
-			@media(max-width:768px){#video{width:auto;height:100%}}
+			.video-wrapper{position:relative;width:640px;max-width:100%}
+			#video{border-radius:8px;box-shadow:0 4px 10px rgba(0,0,0,.1);width:100%;height:auto;display:block}
+			.overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;display:none;border-radius:8px}
+			.snapshot{border:2px solid #333;background:rgba(255,255,255,.7);box-shadow:0 4px 10px rgba(0,0,0,.1);display:none;width:640px;height:480px;border-radius:8px}
+			@media(max-width:768px){.video-wrapper{width:100%}.snapshot{max-width:480px}}
 		</style>
 		
 		<!-- Service Worker Warmup [start] -->
@@ -33,12 +33,14 @@
 		
 		<input type="file" id="jsonFileInput" accept=".json" onchange="handleJsonFileInput(event)">
 		
-		<div style="width:100vw;padding:10px;display:flex;">
-			<video id="video" width="640" height="480" autoplay playsinline muted></video>
-			<canvas id="canvas" class="hidden-canvas"></canvas>
-			<canvas id="canvas2" class="hidden-canvas"></canvas>
-			<canvas id="canvas3" class="hidden-canvas"></canvas>
-			<canvas id="canvas_output"></canvas>
+		<div style="display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;">
+			<div class="video-wrapper">
+				<video id="video" width="640" height="480" autoplay playsinline muted></video>
+				<canvas id="canvas" class="overlay"></canvas>
+				<canvas id="canvas2" class="overlay"></canvas>
+				<canvas id="canvas3" class="overlay"></canvas>
+			</div>
+			<canvas id="canvas_output" class="snapshot"></canvas>
 		</div>
 
 
