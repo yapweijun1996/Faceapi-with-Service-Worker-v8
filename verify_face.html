@@ -270,9 +270,24 @@
          * This ensures that the camera feed is visible even before face detection results arrive
          */
         function setupCameraPreview() {
+            console.log('🎥 Setting up camera preview in module script');
             const video = document.getElementById('video');
             const canvas = document.getElementById('output-canvas');
+            
+            if (!canvas || !video) {
+                console.error('❌ Video or canvas element not found in module script');
+                return;
+            }
+            
+            console.log('🖼️ Getting canvas context');
             const ctx = canvas.getContext('2d');
+            
+            // Track face detection status
+            window.faceDetectionStatus = {
+                faceDetected: false,
+                lastUpdated: Date.now(),
+                message: 'Waiting for face verification...'
+            };
             
             // Draw video frame to canvas continuously
             function drawVideoFrame() {
@@ -281,23 +296,33 @@
                     if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
                         canvas.width = video.videoWidth;
                         canvas.height = video.videoHeight;
+                        console.log(`🖼️ Canvas dimensions set to: ${canvas.width}x${canvas.height}`);
                     }
                     
                     // Draw the video frame
                     ctx.drawImage(video, 0, 0);
                     
                     // Add a message while waiting for face verification
+                    // Use the status from the global variable that can be updated by detection.js
                     ctx.font = '24px Arial';
                     ctx.fillStyle = 'white';
                     ctx.strokeStyle = 'black';
                     ctx.lineWidth = 2;
-                    const message = 'Waiting for face verification...';
+                    
+                    const message = window.faceDetectionStatus ? window.faceDetectionStatus.message : 'Waiting for face verification...';
                     const textWidth = ctx.measureText(message).width;
                     const x = (canvas.width - textWidth) / 2;
                     const y = 40;
                     
                     ctx.strokeText(message, x, y);
                     ctx.fillText(message, x, y);
+                    
+                    // If more than 5 seconds have passed since last status update, reset to waiting
+                    const now = Date.now();
+                    if (now - window.faceDetectionStatus.lastUpdated > 5000) {
+                        window.faceDetectionStatus.message = 'Waiting for face verification...';
+                        window.faceDetectionStatus.faceDetected = false;
+                    }
                 }
                 
                 // Continue drawing only if video is playing and not paused
@@ -308,8 +333,15 @@
             
             // Start drawing when video starts playing
             video.addEventListener('play', () => {
+                console.log('▶️ Video play event captured in module script, starting animation frame');
                 drawVideoFrame();
             });
+            
+            // Start animation if video is already playing
+            if (video.readyState >= 2 && !video.paused && !video.ended) {
+                console.log('▶️ Video is already playing, starting animation frame directly');
+                drawVideoFrame();
+            }
         }
         
         /**
@@ -317,14 +349,45 @@
          */
         async function startVerification() {
             try {
+                console.log('🎬 Starting verification process');
+                
                 // Start camera
+                console.log('🎥 Starting camera');
                 await startCamera();
                 
                 // Set up canvas preview 
+                console.log('🖼️ Setting up camera preview');
                 setupCameraPreview();
+                
+                // Hook into detection.js message handling
+                const originalUpdateStatus = window.updateStatus || function() {};
+                window.updateStatus = function(message, progress) {
+                    console.log(`🔄 Status update: ${message} (${progress}%)`);
+                    
+                    // Update global face detection status for the canvas to use
+                    if (message.includes('Face detected')) {
+                        window.faceDetectionStatus = {
+                            faceDetected: true,
+                            lastUpdated: Date.now(),
+                            message: 'Face detected! Processing verification...'
+                        };
+                        console.log('✅ Face detected, updated status');
+                    } else if (message.includes('No face detected')) {
+                        window.faceDetectionStatus = {
+                            faceDetected: false,
+                            lastUpdated: Date.now(),
+                            message: 'No face detected. Please look at the camera.'
+                        };
+                        console.log('❌ No face detected, updated status');
+                    }
+                    
+                    // Call the original function
+                    originalUpdateStatus(message, progress);
+                };
                 
                 // Start detection
                 if (worker) {
+                    console.log('🔍 Initializing face detection');
                     initDetection(worker);
                     updateStatus('Ready for face verification', 100);
                     updateStepper(3);
@@ -332,28 +395,85 @@
                     throw new Error('Face detection worker not initialized');
                 }
             } catch (error) {
-                console.error('Error starting verification:', error);
+                console.error('❌ Error starting verification:', error);
                 showToast('Failed to start camera: ' + error.message, 'error');
                 updateStatus('Error starting verification', 0);
             }
         }
     </script>
     <script>
+    // Add a function to manually test if face detection is working
+    function testFaceDetection() {
+        console.log('🧪 Manual face detection test initiated');
+        try {
+            // Log current face detection status
+            console.log('Current face detection status:', window.faceDetectionStatus);
+            
+            // Add one-time listener for test response
+            const testResponseHandler = function(event) {
+                if (event.data && event.data.type === 'TEST_RESULT') {
+                    console.log('📊 Received test results from service worker:', event.data.status);
+                    
+                    // If models aren't loaded, show an error
+                    if (!event.data.status.isModelLoaded) {
+                        console.error('❌ Face detection models are not loaded!');
+                        window.faceDetectionStatus = {
+                            faceDetected: false,
+                            lastUpdated: Date.now(),
+                            message: 'Error: Face detection models not loaded!'
+                        };
+                    } else {
+                        console.log('✅ Face detection models are loaded correctly');
+                    }
+                    
+                    // Remove the listener after receiving the response
+                    navigator.serviceWorker.removeEventListener('message', testResponseHandler);
+                }
+            };
+            
+            // Add the listener
+            navigator.serviceWorker.addEventListener('message', testResponseHandler);
+            
+            // Check if service worker is active
+            navigator.serviceWorker.getRegistration().then(reg => {
+                if (reg && reg.active) {
+                    console.log('✅ Service worker is active:', reg.active.scriptURL);
+                    
+                    // Send a ping to the service worker
+                    reg.active.postMessage({ 
+                        type: 'TEST_FACE_DETECTION',
+                        timestamp: Date.now()
+                    });
+                    
+                    console.log('📤 Test message sent to service worker');
+                } else {
+                    console.log('❌ No active service worker found');
+                }
+            });
+            
+            return '🧪 Test initiated, check console for results';
+        } catch (error) {
+            console.error('❌ Test failed:', error);
+            return '❌ Test failed: ' + error.message;
+        }
+    }
+    
     document.addEventListener('DOMContentLoaded', async () => {
         try {
+            console.log('🚀 Secondary script initializing');
             // Get DOM elements
             const statusElement = document.querySelector('.status-indicator__text');
-            const faceVerificationElement = document.getElementById('output-canvas');
             const videoEl = document.getElementById('video');
             const canvasEl = document.getElementById('output-canvas');
 
             if (!videoEl || !canvasEl) {
-                console.error('Video or Canvas element not found');
+                console.error('❌ Video or Canvas element not found in secondary script');
                 return;
             }
 
             // Only run this if we're not using the module system
             if (typeof window.workerInitialized === 'undefined') {
+                console.log('🔄 Secondary script running as module not initialized');
                 // Update status and start camera first
                 statusElement.textContent = 'Starting camera...';
                 await setupCamera();
@@ -365,7 +485,7 @@
                 // Function to draw video frame on canvas
                 function drawVideoFrame() {
                     if (!videoEl || !canvasEl || !ctx) {
-                        console.error('Video, Canvas, or Context not available');
+                        console.error('❌ Video, Canvas, or Context not available');
                         return;
                     }
                     
@@ -373,17 +493,29 @@
                     if (canvasEl.width !== videoEl.videoWidth || canvasEl.height !== videoEl.videoHeight) {
                         canvasEl.width = videoEl.videoWidth;
                         canvasEl.height = videoEl.videoHeight;
-                        console.log(`Canvas dimensions set to: ${canvasEl.width} x ${canvasEl.height}`);
+                        console.log(`🖼️ Canvas dimensions set to: ${canvasEl.width}x${canvasEl.height} in secondary script`);
                     }
                     
                     // Draw the video frame
                     if (videoEl.readyState === videoEl.HAVE_ENOUGH_DATA) {
                         ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
                         
+                        // Get status from the global variable that can be updated by the module script
+                        const status = window.faceDetectionStatus || { 
+                            message: 'Waiting for face detection module to initialize...' 
+                        };
+                        
                         // Add text indicating waiting for face
                         ctx.font = '20px Arial';
                         ctx.fillStyle = 'white';
-                        ctx.fillText('Waiting for face detection...', 20, 30);
+                        ctx.fillText(status.message, 20, 30);
+                        
+                        // Log status periodically (every 3 seconds) to not flood the console
+                        const now = Date.now();
+                        if (!window.lastStatusLog || now - window.lastStatusLog > 3000) {
+                            console.log(`🔄 Current face detection status: ${status.message}`);
+                            window.lastStatusLog = now;
+                        }
                     }
                     
                     // Continue drawing frames
@@ -392,9 +524,13 @@
                 
                 // Mark that we've initialized
                 window.workerInitialized = true;
+                console.log('✅ Marked worker as initialized in secondary script');
                 
                 // Start drawing video frames
+                console.log('🎬 Starting canvas animation in secondary script');
                 drawVideoFrame();
+            } else {
+                console.log('ℹ️ Secondary script skipped as module system is active');
             }
             
             async function setupCamera() {
