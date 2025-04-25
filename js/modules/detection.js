@@ -197,10 +197,12 @@ export function initDetection(worker) {
                     // Send frame to worker for processing
                     // Note: Using transferable objects (imageData.data.buffer) for better performance
                     worker.postMessage({
-                        type: 'DETECT_FACES',
-                        imageData: frameImageData,
-                        width: frameWidth,
-                        height: frameHeight,
+                        type: 'PROCESS_FRAME',
+                        data: {
+                            imageData: frameImageData,
+                            width: frameWidth,
+                            height: frameHeight,
+                        },
                         timestamp: Date.now(),
                         face_detector_options: DETECTION_OPTIONS
                     }, [frameImageData.data.buffer]);  // Transfer ownership of the buffer

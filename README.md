@@ -41,13 +41,38 @@ http://localhost:8000
 
 ## Troubleshooting
 
-If you encounter issues with face detection:
+### Common Issues
 
-1. Check your browser console for specific error messages
-2. Ensure all model files are properly downloaded to the `/models` directory
-3. Try restarting your camera within the app
-4. Ensure you're using a modern browser with WebGL support
-5. If you see TensorFlow errors, try using Chrome or Edge which have better WebGL support
+1. **Service Worker Loading Errors**
+   - Make sure your server supports HTTPS if testing remotely, as service workers require secure contexts
+   - For local development, service workers are allowed on localhost
+
+2. **face-api.js Loading Issues**
+   - The environment patch must be loaded before face-api.js in the service worker
+   - If you see "Could not find a global object" error, check that faceEnvWorkerPatch.js is loaded first
+
+3. **Models Not Loading**
+   - Ensure the models folder contains all required model files
+   - Check browser console for specific path errors
+
+4. **Camera Access**
+   - Ensure your browser has permission to access the camera
+   - Some browsers require HTTPS even for camera access
+
+### Testing Locally
+
+For local testing, you can use:
+```bash
+npx http-server
+```
+
+Or if you prefer Python:
+```bash
+# Python 3
+python -m http.server
+```
+
+Then open `http://localhost:8080` in your browser.
 
 ## Usage
 

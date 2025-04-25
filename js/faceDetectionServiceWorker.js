@@ -3,6 +3,9 @@
  * Handles face detection processing off the main thread
  */
 
+// Import the environment patch first to set up the worker environment
+importScripts('faceEnvWorkerPatch.js');
+
 // Import face-api.js (path relative to service worker location)
 importScripts('face-api.js');
 
@@ -13,8 +16,20 @@ let isProcessing = false;
 let consecutiveErrors = 0;
 const MAX_CONSECUTIVE_ERRORS = 5;
 
-// Constants
-const MODEL_URL = '../models';
+// Determine the base URL for models based on our location
+// This helps with different deployment environments like GitHub Pages
+const getBasePath = () => {
+  // For service workers, location.pathname gives the path to the worker script
+  const workerPath = self.location.pathname;
+  // Check if we're in a GitHub Pages context
+  if (workerPath.includes('/Faceapi-with-Service-Worker-v8/')) {
+    return '/Faceapi-with-Service-Worker-v8';
+  }
+  return '';
+};
+
+// Constants with adaptive paths
+const MODEL_URL = `${getBasePath()}/models`;
 const DETECTION_OPTIONS = {
   // Adjust these values based on performance needs
   scoreThreshold: 0.5,

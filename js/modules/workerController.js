@@ -2,7 +2,13 @@
 
 import { updateStatus, showToast } from './ui.js';
 
-const SERVICE_WORKER_SCRIPT = './js/faceDetectionServiceWorker.js';
+// Get the base path for the current deployment
+const basePath = window.location.pathname.includes('/Faceapi-with-Service-Worker-v8/') 
+  ? '/Faceapi-with-Service-Worker-v8' // GitHub Pages deployment
+  : '';
+
+// Using adaptive paths that work with different deployment environments
+const SERVICE_WORKER_SCRIPT = `${basePath}/js/faceDetectionServiceWorker.js`;
 const SERVICE_WORKER_NAME = 'faceDetectionServiceWorker.js';
 
 /**
@@ -39,7 +45,9 @@ export async function initWorker(onDetectCallback) {
       serviceWorkerRegistration = existing;
     } else {
       console.log('Registering new service worker');
-      serviceWorkerRegistration = await navigator.serviceWorker.register(SERVICE_WORKER_SCRIPT);
+      serviceWorkerRegistration = await navigator.serviceWorker.register(SERVICE_WORKER_SCRIPT, {
+        scope: '/'
+      });
     }
     
     // Wait for the service worker to be ready
@@ -67,15 +75,39 @@ export async function initWorker(onDetectCallback) {
             onDetectCallback(data);
           }
           break;
+        case 'FACE_DETECTED':
+        case 'NO_FACE_DETECTED':
+        case 'MULTIPLE_FACES_DETECTED':
+          // Forward the detection results to the callback
+          if (onDetectCallback) {
+            onDetectCallback(data || { type });
+          }
+          break;
         case 'MODELS_LOADED':
           updateStatus('Models loaded. Ready to use!', 100);
           document.querySelectorAll('.face-section__controls .button').forEach(btn => btn.disabled = false);
           showToast('Models loaded. Click Start Camera to begin.', 'info');
           break;
+        case 'READY':
+          updateStatus('Face detection ready!', 90);
+          break;
+        case 'DETECTION_ERROR':
+          console.error('Detection error:', data ? data.error : 'Unknown error');
+          if (data && data.fatal) {
+            updateStatus('Fatal error in face detection. Please reload.', 100);
+            showToast('Face detection failed: ' + (data.error || 'Unknown error'), 'error');
+          }
+          break;
         case 'MODELS_ERROR':
           updateStatus('Error loading models. Please check console.', 100);
           showToast('Failed to load face detection models: ' + (error || 'Unknown error'), 'error');
           console.error('Model loading error:', error);
+          break;
+        case 'LOG':
+          console.log('Worker log:', data ? data.message : event.data);
+          break;
+        case 'RESET_COMPLETE':
+          console.log('Worker reset completed');
           break;
         default:
           console.log('Unhandled worker message type:', type);
