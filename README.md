@@ -10,7 +10,13 @@ git clone <repository-url>
 cd Faceapi-with-Service-Worker-v8
 ```
 
-2. Download the face-api.js models:
+2. Download the face-api.js models using the provided script:
+```
+# If you have Node.js installed:
+node download-models.js
+```
+
+Alternatively, manually download models:
    - Create a `models` directory in the root of the project
    - Download the required models from [face-api.js models](https://github.com/justadudewhohacks/face-api.js/tree/master/weights)
    - Required models:
@@ -32,6 +38,16 @@ Or use any other local server of your choice.
 ```
 http://localhost:8000
 ```
+
+## Troubleshooting
+
+If you encounter issues with face detection:
+
+1. Check your browser console for specific error messages
+2. Ensure all model files are properly downloaded to the `/models` directory
+3. Try restarting your camera within the app
+4. Ensure you're using a modern browser with WebGL support
+5. If you see TensorFlow errors, try using Chrome or Edge which have better WebGL support
 
 ## Usage
 
