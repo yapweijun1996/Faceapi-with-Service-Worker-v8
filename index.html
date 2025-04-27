@@ -6,19 +6,23 @@
 		<title>Face Detection</title>
 	</head>
 	<body>
-		<script>
-			function urlReplace(url) {
-				window.location.replace(url); 
-			}
-		</script>
-		<a href="#" onclick="urlReplace('index4.html')">index4</a><br>
-		<a href="#" onclick="urlReplace('face_register.html')">face_register</a><br>
-		<a href="#" onclick="urlReplace('face_verify.html')">face_verify</a><br>
-		
-		<!-- Service Worker Warmup [start] -->
-		<script src="./js/faceapi_warmup.js"></script>
-		<!-- Service Worker Warmup [end  ] -->
-		
-		
+		<!-- Minimal inline CSS to center content and style links as buttons -->
+		<div style="font-family: Arial, sans-serif; margin:0; display:flex; justify-content:center; align-items:center; height:100vh; background:#f5f5f5; width:100%;">
+			<div style="text-align:center;">
+				<h1 style="margin-bottom:24px; color:#333;">Face Detection Demo</h1>
+				<script>
+					function urlReplace(url) {
+						window.location.replace(url);
+					}
+				</script>
+				<a href="#" onclick="urlReplace('index4.html')" style="display:block; width:220px; margin:8px auto; padding:12px 20px; background:#2196F3; color:#fff; text-decoration:none; border-radius:4px;">index4</a>
+				<a href="#" onclick="urlReplace('face_register.html')" style="display:block; width:220px; margin:8px auto; padding:12px 20px; background:#4CAF50; color:#fff; text-decoration:none; border-radius:4px;">face_register</a>
+				<a href="#" onclick="urlReplace('face_verify.html')" style="display:block; width:220px; margin:8px auto; padding:12px 20px; background:#FF9800; color:#fff; text-decoration:none; border-radius:4px;">face_verify</a>
+
+				<!-- Service Worker Warmup [start] -->
+				<script src="./js/faceapi_warmup.js"></script>
+				<!-- Service Worker Warmup [end] -->
+			</div>
+		</div>
 	</body>
 </html>
