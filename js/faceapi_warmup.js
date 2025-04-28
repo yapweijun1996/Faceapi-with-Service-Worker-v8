@@ -31,6 +31,7 @@ var canvasOutputId = "canvas_output";
 var step_fps = 125 ; // 1000 / 125 = 8 FPS
 var vle_face_landmark_position_yn = "y" ; // y / n
 var vle_facebox_yn = "y" ; // y / n
+var disp_face_landmark_yn = "y"; // y / n: control landmarks display on snapshot
 
 
 var isWorkerReady = false;
@@ -433,7 +434,16 @@ async function initWorkerAddEventListener() {
 					
 					
 				}
-				try{drawImageDataToCanvas(event.data.data.detections, canvasOutputId);}catch(err){console.log(err);}
+				try {
+					drawImageDataToCanvas(event.data.data.detections, canvasOutputId);
+					// Optionally draw landmarks on the snapshot canvas if enabled
+					if (disp_face_landmark_yn === "y" && event.data.data.detections[0] && event.data.data.detections[0][0]) {
+						const landmarks = event.data.data.detections[0][0].landmarks._positions;
+						drawSnapshotLandmarks(landmarks, canvasOutputId);
+					}
+				} catch (err) {
+					console.log(err);
+				}
 			}
 			
 			if(typeof vle_face_landmark_position_yn === "string"){
@@ -650,3 +660,22 @@ document.addEventListener("DOMContentLoaded", async function(event) {
     console.log("DOMContentLoaded"); 
     await initWorker();
 });
+
+// New: draw landmarks directly on the snapshot canvas for modern display
+/**
+ * Draws landmarks on the snapshot canvas for modern display.
+ * @param {Array} landmarks - Array of { _x, _y } points.
+ * @param {string} canvasId - ID of the snapshot canvas.
+ */
+function drawSnapshotLandmarks(landmarks, canvasId) {
+    const canvas = document.getElementById(canvasId);
+    const ctx = canvas.getContext('2d');
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 150, 255, 0.8)';
+    landmarks.forEach(pt => {
+        ctx.beginPath();
+        ctx.arc(pt._x, pt._y, 3, 0, 2 * Math.PI);
+        ctx.fill();
+    });
+    ctx.restore();
+}
