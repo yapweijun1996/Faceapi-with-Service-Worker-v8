@@ -280,10 +280,10 @@ function draw_face_landmarks() {
     // Draw each landmark as a small white circle with corporate-blue outline
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#007ACC';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1;
     pts.forEach(({ x, y }) => {
         ctx.beginPath();
-        ctx.arc(x, y, 1, 0, 2 * Math.PI);
+        ctx.arc(x, y, 2, 0, 2 * Math.PI);
         ctx.fill();
         ctx.stroke();
     });
