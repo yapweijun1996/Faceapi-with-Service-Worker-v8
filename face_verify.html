@@ -104,10 +104,14 @@
 		<div class="face-detection-container">
 			<div class="video-wrapper">
 				<video id="video" width="640" height="480" autoplay playsinline muted></video>
+				<!-- Hidden canvas capturing raw video frames for worker inference -->
 				<canvas id="canvas" class="overlay"></canvas>
+				<!-- Overlay for drawing facial landmarks (mirrored to match video) -->
 				<canvas id="canvas2" class="overlay"></canvas>
+				<!-- Overlay for drawing bounding boxes and confidence (mirrored to match video) -->
 				<canvas id="canvas3" class="overlay"></canvas>
 			</div>
+			<!-- Snapshot canvas showing captured face image with confidence -->
 			<canvas id="canvas_output" class="snapshot"></canvas>
 		</div>
 
