@@ -283,7 +283,7 @@ function draw_face_landmarks() {
     ctx.lineWidth = 1.5;
     pts.forEach(({ x, y }) => {
         ctx.beginPath();
-        ctx.arc(x, y, 3, 0, 2 * Math.PI);
+        ctx.arc(x, y, 1, 0, 2 * Math.PI);
         ctx.fill();
         ctx.stroke();
     });
