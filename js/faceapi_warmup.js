@@ -273,51 +273,44 @@ function draw_face_landmarks() {
     canvas.height = video.videoHeight;
     const width = canvas.width;
     const height = canvas.height;
-
-    // Get raw landmark positions
-    const positions = event.data.data.detections[0][0].landmarks._positions;
-    // Mirror and map to canvas coords
-    const pts = positions.map(pt => ({ x: width - pt._x, y: pt._y }));
-
+    // Extract and mirror landmark positions
+    const raw = event.data.data.detections[0][0].landmarks._positions;
+    const pts = raw.map(pt => ({ x: width - pt._x, y: pt._y }));
     ctx.clearRect(0, 0, width, height);
-    // Build smooth spline path around all points
-    ctx.beginPath();
-    if (pts.length > 0) {
-        ctx.moveTo(pts[0].x, pts[0].y);
-        for (let i = 1; i < pts.length; i++) {
-            const prev = pts[i - 1];
-            const curr = pts[i];
-            const midX = (prev.x + curr.x) / 2;
-            const midY = (prev.y + curr.y) / 2;
-            ctx.quadraticCurveTo(prev.x, prev.y, midX, midY);
-        }
-        // Close loop smoothly
-        const last = pts[pts.length - 1];
-        const first = pts[0];
-        const midX = (last.x + first.x) / 2;
-        const midY = (last.y + first.y) / 2;
-        ctx.quadraticCurveTo(last.x, last.y, midX, midY);
-        ctx.quadraticCurveTo(midX, midY, first.x, first.y);
-        ctx.closePath();
+    // Draw each landmark as a small white circle with corporate-blue outline
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#007ACC';
+    ctx.lineWidth = 1.5;
+    pts.forEach(({ x, y }) => {
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+    });
+    // Define facial feature groups by landmark indices
+    const groups = {
+        jaw: [...Array(17).keys()],
+        leftBrow: [17,18,19,20,21],
+        rightBrow: [22,23,24,25,26],
+        noseBridge: [27,28,29,30],
+        noseBottom: [31,32,33,34,35],
+        leftEye: [36,37,38,39,40,41,36],
+        rightEye: [42,43,44,45,46,47,42],
+        outerLips: [48,49,50,51,52,53,54,55,56,57,58,59,48],
+        innerLips: [60,61,62,63,64,65,66,67,60]
+    };
+    // Draw subtle gray lines for each group
+    ctx.strokeStyle = '#555555';
+    ctx.lineWidth = 1;
+    for (const idxs of Object.values(groups)) {
+        ctx.beginPath();
+        idxs.forEach((i, k) => {
+            const p = pts[i];
+            if (k === 0) ctx.moveTo(p.x, p.y);
+            else ctx.lineTo(p.x, p.y);
+        });
+        ctx.stroke();
     }
-
-    // Fill face shape with low-opacity gradient
-    const fillGrad = ctx.createLinearGradient(0, 0, width, height);
-    fillGrad.addColorStop(0, 'rgba(0,255,255,0.1)');
-    fillGrad.addColorStop(1, 'rgba(255,0,255,0.1)');
-    ctx.fillStyle = fillGrad;
-    ctx.fill();
-
-    // Stroke neon glow outline
-    ctx.save();
-    ctx.shadowColor = 'cyan';
-    ctx.shadowBlur = 20;
-    ctx.strokeStyle = 'cyan';
-    ctx.lineWidth = 4;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.stroke();
-    ctx.restore();
 }
 
 var registeredDescriptors = [];
