@@ -196,118 +196,79 @@ async function drawImageDataToCanvas(detections, canvasId) {
     }
 }
 
+/* Overlay Canvas Elements:
+ *   #canvas        – hidden canvas capturing raw video frames for worker inference.
+ *   #canvas2       – overlay for drawing facial landmarks (mirrored to match video).
+ *   #canvas3       – overlay for drawing bounding boxes and confidence (mirrored to match video).
+ *   #canvas_output – snapshot canvas showing captured face image with confidence.
+ *
+ * Canvas Functions:
+ *   video_face_detection    – continuously grabs video frames and sends to service worker for detection.
+ *   drawImageDataToCanvas   – displays the detected-face snapshot and confidence on #canvas_output.
+ *   drawLandmarks           – draws mirrored landmark points on #canvas2 overlay.
+ *   draw_face_box           – draws mirrored face bounding box and upright confidence text on #canvas3 overlay.
+ *   draw_face_landmarks     – draws detailed mirrored landmark shapes on #canvas2 overlay.
+ */
+
+// Draws facial landmark dots (mirrored) onto the #canvas2 overlay.
 function drawLandmarks(landmarks) {
-	const canvas = document.getElementById('canvas2');
-	const ctx = canvas.getContext('2d');
-	ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear previous drawings
-
-	ctx.fillStyle = 'red'; // Color for landmarks
-	landmarks.forEach(landmark => {
-		ctx.beginPath();
-		ctx.arc(landmark.x, landmark.y, 2, 0, 2 * Math.PI); // Draw small circles
-		ctx.fill();
-	});
+    const canvas = document.getElementById(canvasId2);
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    ctx.clearRect(0, 0, width, canvas.height);
+    ctx.fillStyle = 'red';
+    landmarks.forEach(pt => {
+        const mx = width - pt.x;
+        const my = pt.y;
+        ctx.beginPath(); ctx.arc(mx, my, 2, 0, 2 * Math.PI); ctx.fill();
+    });
 }
 
-// Function to draw the face bounding box on the canvas
+// Draws a mirrored bounding box and confidence percentage onto the #canvas3 overlay.
 function draw_face_box(canvas_id, box, confidence) {
-    var canvas = document.getElementById(canvas_id);
-    var context = canvas.getContext("2d");
-    var video = document.getElementById(videoId);
-
-    if (typeof canvas === "object") {
-        // Set canvas dimensions to match video dimensions
-        canvas.width = video.videoWidth;  // Use video.videoWidth for accurate dimensions
-        canvas.height = video.videoHeight; // Use video.videoHeight for accurate dimensions
-        // Optional: Adjust canvas position using CSS
-        //canvas.style.marginTop = `-${video.videoHeight}px`; // Move canvas up by video height if needed
-
-        canvas.style.display = "block";
-        console.log("draw_face_box start");
-        console.log(typeof canvasId3);
-
-        // Ensure the canvas is cleared before drawing the new box
-        context.clearRect(0, 0, canvas.width, canvas.height); // Clear any previous drawings
-
-        // Determine the color based on confidence
-        let boxColor = 'red';  // Default to red if no confidence or low confidence
-        if (confidence >= 0.8) {
-            boxColor = 'green';  // High confidence: green
-        } else if (confidence >= 0.5) {
-            boxColor = 'yellow'; // Medium confidence: yellow
-        }
-
-        // Draw the bounding box on the canvas
-        context.beginPath();
-        context.rect(box._x, box._y, box._width, box._height);  // Draw the rectangle
-        context.lineWidth = 3;  // Set the border width
-        context.strokeStyle = boxColor;  // Set the border color
-        context.fillStyle = 'rgba(255, 0, 0, 0)';  // Optional: Set fill color with transparency
-
-        // Fill the rectangle (optional) and then stroke (outline)
-        context.fill();
-        context.stroke();
-
-        // Display confidence rate above the bounding box, top-right corner
-        context.font = "16px Arial";  // Set font size for the text above the box
-        context.fillStyle = boxColor;  // Use white for red boxes, black for others
-        context.textAlign = "right";  // Align the text to the right of the bounding box
-        context.textBaseline = "bottom"; // Align text to the bottom (so it's above the box)
-
-        // Calculate the position to place the confidence rate above the bounding box
-        let confidenceText = `${Math.round(confidence * 100)}%`;
-        let textX = box._x + box._width - 5;  // Position the text at the right edge of the box, with a small margin
-        let textY = box._y - 10;  // Place the text 10px above the box
-
-        // Draw the confidence text above the bounding box
-        context.fillText(confidenceText, textX, textY);  // Draw the confidence percentage above the box
-    }
+    const canvas = document.getElementById(canvas_id);
+    const ctx = canvas.getContext('2d');
+    const video = document.getElementById(videoId);
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.style.display = 'block';
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const mx = canvas.width - box._x - box._width;
+    const my = box._y;
+    let boxColor = 'red';
+    if (confidence >= 0.8) boxColor = 'green'; else if (confidence >= 0.5) boxColor = 'yellow';
+    ctx.beginPath(); ctx.rect(mx, my, box._width, box._height);
+    ctx.lineWidth = 3; ctx.strokeStyle = boxColor; ctx.stroke();
+    ctx.font = '16px Arial'; ctx.fillStyle = boxColor;
+    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+    ctx.fillText(`${Math.round(confidence * 100)}%`, mx + box._width - 5, my - 10);
 }
 
-
-// Function to draw the face landmarks on the canvas
+// Draws detailed mirrored facial landmarks and optional connecting lines onto #canvas2 overlay.
 function draw_face_landmarks() {
-	
-	var video = document.getElementById(videoId);
-	var canvas = document.getElementById(canvasId2);
-	var ctx = canvas.getContext('2d');
-	
-	console.log(typeof canvas);
-	if(typeof canvas === "object"){
-		canvas.style.display = "block";
-		
-		// Set canvas dimensions to match video dimensions
-		canvas.width = video.videoWidth;  // Use video.videoWidth for accurate dimensions
-		canvas.height = video.videoHeight; // Use video.videoHeight for accurate dimensions// Optional: Adjust canvas position using CSS
-		//canvas.style.marginTop = `-${video.videoHeight}px`; // Move canvas up by video height if needed
-		
-		// Get the landmarks
-		var landmarks = event.data.data.detections[0][0].landmarks._positions;
-		
-		// Clear the canvas
-		ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-		// Set styles for drawing
-		ctx.fillStyle = 'red'; // Color for landmarks
-		ctx.strokeStyle = 'red'; // Color for landmark lines, if needed
-		ctx.lineWidth = 2; // Line width for any lines drawn between landmarks
-
-		// Draw each landmark as a circle
-		landmarks.forEach(landmark => {
-			ctx.beginPath();
-			ctx.arc(landmark._x, landmark._y, 2, 0, 2 * Math.PI); // Draw a small circle at each landmark
-			ctx.fill();
-		});
-
-		// Optionally, draw lines between specific landmarks if needed (e.g., connecting certain features)
-		// Example: Connect the first few landmarks (adjust based on your needs)
-		ctx.beginPath();
-		ctx.moveTo(landmarks[0]._x, landmarks[0]._y); // Start from the first landmark
-		landmarks.slice(1, 5).forEach(landmark => { // Connect the first 4 landmarks
-			ctx.lineTo(landmark._x, landmark._y);
-		});
-		ctx.stroke();
-	}
+    const video = document.getElementById(videoId);
+    const canvas = document.getElementById(canvasId2);
+    const ctx = canvas.getContext('2d');
+    canvas.style.display = 'block';
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const width = canvas.width;
+    const landmarks = event.data.data.detections[0][0].landmarks._positions;
+    ctx.clearRect(0, 0, width, canvas.height);
+    ctx.fillStyle = 'red'; ctx.strokeStyle = 'red'; ctx.lineWidth = 2;
+    landmarks.forEach(pt => {
+        const mx = width - pt._x;
+        const my = pt._y;
+        ctx.beginPath(); ctx.arc(mx, my, 2, 0, 2 * Math.PI); ctx.fill();
+    });
+    if (landmarks.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(width - landmarks[0]._x, landmarks[0]._y);
+        landmarks.slice(1, 5).forEach(pt => {
+            ctx.lineTo(width - pt._x, pt._y);
+        });
+        ctx.stroke();
+    }
 }
 
 var registeredDescriptors = [];
