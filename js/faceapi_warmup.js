@@ -519,26 +519,42 @@ async function initWorkerAddEventListener() {
 }
 
 async function workerRegistration() {
-	if ('serviceWorker' in navigator) {
-		// Get the existing registrations
-		var registrations = await navigator.serviceWorker.getRegistrations();
-		console.log(registrations);
-		// Check if the specific service worker is already registered
-		var existingRegistration = registrations.find(
-			reg => reg.active && reg.active.scriptURL.endsWith(serviceWorkerFileName)
-		);
-		console.log(existingRegistration);
-		if(typeof existingRegistration === "undefined" || existingRegistration === "undefined"){
-			console.log("existingRegistration : undefined");
-			// Register the service worker if not already registered
-			var registration = await navigator.serviceWorker.register(serviceWorkerFilePath);
-			worker = registration.active;
-		}else{
-			worker = existingRegistration.active;
-		}
-		
-	} else {
+	if (!('serviceWorker' in navigator)) {
 		console.error('Service workers are not supported in this browser.');
+		return;
+	}
+
+	// Check if we already have a ready registration for our SW file
+	const registrations = await navigator.serviceWorker.getRegistrations();
+	let registration = registrations.find(reg => reg.active && reg.active.scriptURL.endsWith(serviceWorkerFileName));
+
+	if (!registration) {
+		console.log('Registering new service worker');
+		registration = await navigator.serviceWorker.register(serviceWorkerFilePath);
+	}
+
+	// Ensure the service worker is activated (first load can be in installing/waiting state)
+	if (!registration.active) {
+		// Wait for the ready promise which resolves when the service worker becomes active
+		console.log('Waiting for service worker to activate...');
+		await navigator.serviceWorker.ready;
+	}
+
+	// After ready, grab the active worker (fall back to waiting/installing if still not active)
+	worker = registration.active || registration.waiting || registration.installing;
+
+	// If worker is still not defined, listen for statechange
+	if (!worker) {
+		console.warn('Service worker not active yet, waiting for statechange');
+		worker = registration.installing;
+		await new Promise(resolve => {
+			if (!worker) return resolve();
+			worker.addEventListener('statechange', function(evt) {
+				if (evt.target.state === 'activated') {
+					resolve();
+				}
+			});
+		});
 	}
 }
 

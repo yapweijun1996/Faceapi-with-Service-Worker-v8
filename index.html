@@ -19,9 +19,9 @@
 				<a href="#" onclick="urlReplace('face_register.html')" style="display:block; width:220px; margin:8px auto; padding:12px 20px; background:#4CAF50; color:#fff; text-decoration:none; border-radius:4px;">face_register</a>
 				<a href="#" onclick="urlReplace('face_verify.html')" style="display:block; width:220px; margin:8px auto; padding:12px 20px; background:#FF9800; color:#fff; text-decoration:none; border-radius:4px;">face_verify</a>
 
-				<!-- Service Worker Warmup [start] -->
+				<!-- Preload face-api core and warm-up helper so service worker models load in background -->
+				<script src="./js/face-api.min.js"></script>
 				<script src="./js/faceapi_warmup.js"></script>
-				<!-- Service Worker Warmup [end] -->
 			</div>
 		</div>
 	</body>
