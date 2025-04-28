@@ -126,3 +126,14 @@ self.addEventListener('message', async function(event) {
 self.addEventListener('messageerror', function(event) {
     console.error('Service Worker message error: ', event);
 });
+
+// Ensure the worker activates as soon as it finishes installing and takes control
+self.addEventListener('install', event => {
+    // Skip the waiting phase so this SW becomes active immediately.
+    self.skipWaiting();
+});
+
+self.addEventListener('activate', event => {
+    // Become available to all pages under scope immediately.
+    event.waitUntil(self.clients.claim());
+});

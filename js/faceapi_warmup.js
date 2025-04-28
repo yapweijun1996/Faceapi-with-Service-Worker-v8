@@ -524,38 +524,50 @@ async function workerRegistration() {
 		return;
 	}
 
-	// Check if we already have a ready registration for our SW file
+	// Ensure the scope of the SW covers the current page (script directory by default)
+	const swScope = './js/';
+
+	// Attempt to find an existing registration for our SW file within scope
 	const registrations = await navigator.serviceWorker.getRegistrations();
 	let registration = registrations.find(reg => reg.active && reg.active.scriptURL.endsWith(serviceWorkerFileName));
 
 	if (!registration) {
 		console.log('Registering new service worker');
-		registration = await navigator.serviceWorker.register(serviceWorkerFilePath);
+		try {
+			registration = await navigator.serviceWorker.register(serviceWorkerFilePath, { scope: swScope });
+		} catch (err) {
+			console.error('Service worker registration failed:', err);
+			throw err;
+		}
 	}
 
-	// Ensure the service worker is activated (first load can be in installing/waiting state)
+	// Wait until the service worker is activated. Avoid using navigator.serviceWorker.ready
 	if (!registration.active) {
-		// Wait for the ready promise which resolves when the service worker becomes active
 		console.log('Waiting for service worker to activate...');
-		await navigator.serviceWorker.ready;
-	}
 
-	// After ready, grab the active worker (fall back to waiting/installing if still not active)
-	worker = registration.active || registration.waiting || registration.installing;
-
-	// If worker is still not defined, listen for statechange
-	if (!worker) {
-		console.warn('Service worker not active yet, waiting for statechange');
-		worker = registration.installing;
 		await new Promise(resolve => {
-			if (!worker) return resolve();
-			worker.addEventListener('statechange', function(evt) {
+			// If there is an installing worker listen for state changes
+			const installingWorker = registration.installing || registration.waiting;
+			if (!installingWorker) {
+				// No worker yet (very unlikely) – resolve immediately
+				return resolve();
+			}
+
+			if (installingWorker.state === 'activated') {
+				return resolve();
+			}
+
+			installingWorker.addEventListener('statechange', evt => {
 				if (evt.target.state === 'activated') {
 					resolve();
 				}
 			});
 		});
 	}
+
+	// After activation grab the worker reference
+	worker = registration.active || registration.waiting || registration.installing;
+	return worker;
 }
 
 function delay(ms) {
@@ -563,9 +575,18 @@ function delay(ms) {
 }
 
 async function load_model() {
-	
-	await workerRegistration();
-	await worker.postMessage({ type: 'LOAD_MODELS' });
+    if (!worker) {
+        // Ensure we have a reference – this should usually not happen because
+        // initWorker already awaited workerRegistration(), but keep it as a
+        // safeguard.
+        await workerRegistration();
+    }
+
+    if (worker) {
+        worker.postMessage({ type: 'LOAD_MODELS' });
+    } else {
+        console.error('Unable to post message, worker is undefined');
+    }
 }
 
 async function initWorker() {
