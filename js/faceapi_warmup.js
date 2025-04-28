@@ -39,6 +39,14 @@ var serviceWorkerFileName = "faceDetectionServiceWorker.js";
 var serviceWorkerFilePath = "./js/faceDetectionServiceWorker.js";
 var imgFaceFilePathForWarmup = "./models/face_for_loading.png";
 
+// Helper to update loading bar UI
+function updateLoadingUI(progress, status) {
+    var bar = document.getElementById('loading-bar');
+    var statusElem = document.getElementById('loading-status');
+    if (bar) bar.style.width = progress + '%';
+    if (statusElem) statusElem.textContent = status;
+}
+
 if(typeof face_detector_options_setup === "undefined" || face_detector_options_setup === "undefined"){
 	var face_detector_options_setup = {
 		inputSize: 128,
@@ -420,10 +428,15 @@ async function initWorkerAddEventListener() {
 		console.log('event.data.type.');
 		console.log(event.data.type);
 		switch (event.data.type) {
+			case 'MODEL_LOAD_PROGRESS':
+				console.log('Model load progress:', event.data.progress, event.data.status);
+				updateLoadingUI(event.data.progress, event.data.status);
+				break;
 			case 'MODELS_LOADED':
-			console.log('Face detection models loaded.');
-			faceapi_warmup();
-			break;
+				console.log('Face detection models loaded.');
+				updateLoadingUI(100, 'Models loaded');
+				faceapi_warmup();
+				break;
 			case 'DETECTION_RESULT':
 			console.log("DETECTION_RESULT here");
 			console.log(event);
