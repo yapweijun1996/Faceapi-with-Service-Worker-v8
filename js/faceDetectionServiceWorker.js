@@ -13,14 +13,9 @@ var FaceDetectorOptionsDefault = new faceapi.TinyFaceDetectorOptions({
 var face_for_loading_options = FaceDetectorOptionsDefault;
 
 async function loadModels() {
-    // broadcast start loading
-    broadcast({ type: 'MODEL_LOAD_PROGRESS', progress: 0, status: 'Start loading models' });
     await faceapi.nets.tinyFaceDetector.loadFromUri('../models');
-    broadcast({ type: 'MODEL_LOAD_PROGRESS', progress: 33, status: 'Loaded TinyFaceDetector model' });
     await faceapi.nets.faceLandmark68Net.loadFromUri('../models');
-    broadcast({ type: 'MODEL_LOAD_PROGRESS', progress: 66, status: 'Loaded FaceLandmark68Net model' });
     await faceapi.nets.faceRecognitionNet.loadFromUri('../models');
-    broadcast({ type: 'MODEL_LOAD_PROGRESS', progress: 100, status: 'Loaded FaceRecognitionNet model' });
 
     isModelLoaded = true;
     broadcast({ type: 'MODELS_LOADED' });
