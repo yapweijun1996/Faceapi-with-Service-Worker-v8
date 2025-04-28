@@ -16,9 +16,17 @@
  * converting it to an ES Module to avoid polluting the global scope.
  */
 var videoId = "video";
+/**
+ * ID of the hidden canvas used for capturing raw video frames for inference.
+ * @type {string}
+ */
 var canvasId = "canvas";
 var canvasId2 = "canvas2";
 var canvasId3 = "canvas3";
+/**
+ * ID of the snapshot canvas used to display the detected face image with confidence percentage.
+ * @type {string}
+ */
 var canvasOutputId = "canvas_output";
 var step_fps = 125 ; // 1000 / 125 = 8 FPS
 var vle_face_landmark_position_yn = "y" ; // y / n
@@ -107,6 +115,10 @@ async function load_face_descriptor_json(warmupFaceDescriptorJson) {
 	}
 }
 
+/**
+ * Continuously captures video frames and sends them to the service worker for face detection.
+ * Draws the raw frame into the hidden canvas (canvasId) for inference.
+ */
 function video_face_detection() {
 	var video = document.getElementById(videoId);
 	var canvas = document.getElementById(canvasId);
@@ -160,6 +172,11 @@ async function unregisterAllServiceWorker() {
 	});
 }
 
+/**
+ * Draws the captured face image and confidence percentage onto the snapshot canvas (canvasOutputId).
+ * @param {Array} detections - Array containing face detection results and raw ImageData.
+ * @param {string} canvasId - ID of the canvas to draw the snapshot on.
+ */
 async function drawImageDataToCanvas(detections, canvasId) {
     var canvas = document.getElementById(canvasId);
     var context = canvas.getContext("2d");
@@ -210,7 +227,10 @@ async function drawImageDataToCanvas(detections, canvasId) {
  *   draw_face_landmarks     – draws detailed mirrored landmark shapes on #canvas2 overlay.
  */
 
-// Draws facial landmark dots (mirrored) onto the #canvas2 overlay.
+/**
+ * Draws mirrored facial landmark dots onto the landmarks overlay canvas (canvasId2).
+ * @param {Array<{ x: number, y: number }>} landmarks - Array of landmark point coordinates.
+ */
 function drawLandmarks(landmarks) {
     const canvas = document.getElementById(canvasId2);
     const ctx = canvas.getContext('2d');
@@ -224,7 +244,12 @@ function drawLandmarks(landmarks) {
     });
 }
 
-// Draws a mirrored bounding box and confidence percentage onto the #canvas3 overlay.
+/**
+ * Draws a mirrored face bounding box and confidence percentage onto the bounding box overlay canvas (canvasId3).
+ * @param {string} canvas_id - ID of the canvas to draw the bounding box.
+ * @param {Object} box - Bounding box object with _x, _y, _width, and _height properties.
+ * @param {number} confidence - Confidence score (0 to 1) of the face detection.
+ */
 function draw_face_box(canvas_id, box, confidence) {
     const canvas = document.getElementById(canvas_id);
     const ctx = canvas.getContext('2d');
@@ -244,7 +269,9 @@ function draw_face_box(canvas_id, box, confidence) {
     ctx.fillText(`${Math.round(confidence * 100)}%`, mx + box._width - 5, my - 10);
 }
 
-// Draws detailed mirrored facial landmarks and optional connecting lines onto #canvas2 overlay.
+/**
+ * Draws detailed facial landmarks with optional connecting lines onto the landmarks overlay canvas (canvasId2).
+ */
 function draw_face_landmarks() {
     const video = document.getElementById(videoId);
     const canvas = document.getElementById(canvasId2);
