@@ -17,9 +17,9 @@
  */
 var videoId = "video";
 var canvasId = "canvas";
-var canvasId2 = canvasId;        // alias for landmark drawing
-var canvasId3 = canvasId;        // alias for bounding box drawing
-var canvasOutputId = canvasId;   // alias for snapshot (no separate canvas)
+var canvasId2 = "canvas2";
+var canvasId3 = "canvas3";
+var canvasOutputId = "canvas_output";
 var step_fps = 125 ; // 1000 / 125 = 8 FPS
 var vle_face_landmark_position_yn = "y" ; // y / n
 var vle_facebox_yn = "y" ; // y / n
@@ -226,10 +226,13 @@ function drawLandmarks(landmarks) {
 
 // Draws a mirrored bounding box and confidence percentage onto the #canvas3 overlay.
 function draw_face_box(canvas_id, box, confidence) {
-    // Draw bounding box on unified overlay canvas without clearing landmarks
     const canvas = document.getElementById(canvas_id);
     const ctx = canvas.getContext('2d');
+    const video = document.getElementById(videoId);
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
     canvas.style.display = 'block';
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     const mx = canvas.width - box._x - box._width;
     const my = box._y;
     let boxColor = 'red';
@@ -403,14 +406,7 @@ async function initWorkerAddEventListener() {
 					
 					
 				}
-				// Only draw the snapshot canvas when performing face verification
-				if (faceapi_action === 'verify') {
-					try {
-						drawImageDataToCanvas(event.data.data.detections, canvasOutputId);
-					} catch(err) {
-						console.log(err);
-					}
-				}
+				try{drawImageDataToCanvas(event.data.data.detections, canvasOutputId);}catch(err){console.log(err);}
 			}
 			
 			if(typeof vle_face_landmark_position_yn === "string"){
