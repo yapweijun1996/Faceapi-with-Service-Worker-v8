@@ -232,29 +232,8 @@ async function drawImageDataToCanvas(detections, canvasId) {
  * @param {Array<{ x: number, y: number }>} landmarks - Array of landmark point coordinates.
  */
 function drawLandmarks(landmarks) {
-    const canvas = document.getElementById(canvasId2);
-    const ctx = canvas.getContext('2d');
-    const width = canvas.width;
-    ctx.clearRect(0, 0, width, canvas.height);
-    // Futuristic neon-glow style: radial gradients with glow
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    landmarks.forEach(pt => {
-        const mx = width - pt.x;
-        const my = pt.y;
-        const radius = 6;
-        // Create neon gradient
-        const gradient = ctx.createRadialGradient(mx, my, 0, mx, my, radius);
-        gradient.addColorStop(0, 'rgba(0,255,255,0.9)');
-        gradient.addColorStop(1, 'rgba(0,255,255,0)');
-        ctx.fillStyle = gradient;
-        ctx.shadowBlur = 12;
-        ctx.shadowColor = 'cyan';
-        ctx.beginPath();
-        ctx.arc(mx, my, radius, 0, 2 * Math.PI);
-        ctx.fill();
-    });
-    ctx.restore();
+    // Legacy stub: forward to full spline glow style
+    draw_face_landmarks();
 }
 
 /**
@@ -293,39 +272,50 @@ function draw_face_landmarks() {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const width = canvas.width;
-    const landmarks = event.data.data.detections[0][0].landmarks._positions;
-    ctx.clearRect(0, 0, width, canvas.height);
-    // Futuristic neon-glow connecting points style
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    // Draw glowing points
-    landmarks.forEach(pt => {
-        const mx = width - pt._x;
-        const my = pt._y;
-        const radius = 6;
-        const gradient = ctx.createRadialGradient(mx, my, 0, mx, my, radius);
-        gradient.addColorStop(0, 'rgba(255,0,255,0.9)');
-        gradient.addColorStop(1, 'rgba(255,0,255,0)');
-        ctx.fillStyle = gradient;
-        ctx.shadowBlur = 12;
-        ctx.shadowColor = 'magenta';
-        ctx.beginPath();
-        ctx.arc(mx, my, radius, 0, 2 * Math.PI);
-        ctx.fill();
-    });
-    // Draw neon connecting lines
-    ctx.strokeStyle = 'rgba(255,0,255,0.7)';
-    ctx.lineWidth = 2;
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = 'magenta';
+    const height = canvas.height;
+
+    // Get raw landmark positions
+    const positions = event.data.data.detections[0][0].landmarks._positions;
+    // Mirror and map to canvas coords
+    const pts = positions.map(pt => ({ x: width - pt._x, y: pt._y }));
+
+    ctx.clearRect(0, 0, width, height);
+    // Build smooth spline path around all points
     ctx.beginPath();
-    landmarks.forEach((pt, idx) => {
-        const mx = width - pt._x;
-        const my = pt._y;
-        if (idx === 0) ctx.moveTo(mx, my);
-        else ctx.lineTo(mx, my);
-    });
-    ctx.closePath();
+    if (pts.length > 0) {
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) {
+            const prev = pts[i - 1];
+            const curr = pts[i];
+            const midX = (prev.x + curr.x) / 2;
+            const midY = (prev.y + curr.y) / 2;
+            ctx.quadraticCurveTo(prev.x, prev.y, midX, midY);
+        }
+        // Close loop smoothly
+        const last = pts[pts.length - 1];
+        const first = pts[0];
+        const midX = (last.x + first.x) / 2;
+        const midY = (last.y + first.y) / 2;
+        ctx.quadraticCurveTo(last.x, last.y, midX, midY);
+        ctx.quadraticCurveTo(midX, midY, first.x, first.y);
+        ctx.closePath();
+    }
+
+    // Fill face shape with low-opacity gradient
+    const fillGrad = ctx.createLinearGradient(0, 0, width, height);
+    fillGrad.addColorStop(0, 'rgba(0,255,255,0.1)');
+    fillGrad.addColorStop(1, 'rgba(255,0,255,0.1)');
+    ctx.fillStyle = fillGrad;
+    ctx.fill();
+
+    // Stroke neon glow outline
+    ctx.save();
+    ctx.shadowColor = 'cyan';
+    ctx.shadowBlur = 20;
+    ctx.strokeStyle = 'cyan';
+    ctx.lineWidth = 4;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
     ctx.stroke();
     ctx.restore();
 }
