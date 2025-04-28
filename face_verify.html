@@ -54,6 +54,7 @@
 			@media (orientation: portrait){
 				.face-detection-container{
 					flex-direction:column;
+					padding:0;
 				}
 
 				.video-wrapper,
@@ -76,6 +77,11 @@
 					height:100%;
 					object-fit:cover;
 				}
+			}
+
+			/* Mirror video and overlay canvases horizontally */
+			#video, .overlay {
+				transform: scaleX(-1);
 			}
 		</style>
 		
