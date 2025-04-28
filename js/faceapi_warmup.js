@@ -31,7 +31,6 @@ var canvasOutputId = "canvas_output";
 var step_fps = 125 ; // 1000 / 125 = 8 FPS
 var vle_face_landmark_position_yn = "y" ; // y / n
 var vle_facebox_yn = "y" ; // y / n
-var disp_face_landmark_yn = "y"; // y / n: control landmarks display on snapshot
 
 
 var isWorkerReady = false;
@@ -237,12 +236,25 @@ function drawLandmarks(landmarks) {
     const ctx = canvas.getContext('2d');
     const width = canvas.width;
     ctx.clearRect(0, 0, width, canvas.height);
-    ctx.fillStyle = 'red';
+    // Futuristic neon-glow style: radial gradients with glow
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
     landmarks.forEach(pt => {
         const mx = width - pt.x;
         const my = pt.y;
-        ctx.beginPath(); ctx.arc(mx, my, 2, 0, 2 * Math.PI); ctx.fill();
+        const radius = 6;
+        // Create neon gradient
+        const gradient = ctx.createRadialGradient(mx, my, 0, mx, my, radius);
+        gradient.addColorStop(0, 'rgba(0,255,255,0.9)');
+        gradient.addColorStop(1, 'rgba(0,255,255,0)');
+        ctx.fillStyle = gradient;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = 'cyan';
+        ctx.beginPath();
+        ctx.arc(mx, my, radius, 0, 2 * Math.PI);
+        ctx.fill();
     });
+    ctx.restore();
 }
 
 /**
@@ -283,20 +295,39 @@ function draw_face_landmarks() {
     const width = canvas.width;
     const landmarks = event.data.data.detections[0][0].landmarks._positions;
     ctx.clearRect(0, 0, width, canvas.height);
-    ctx.fillStyle = 'red'; ctx.strokeStyle = 'red'; ctx.lineWidth = 2;
+    // Futuristic neon-glow connecting points style
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    // Draw glowing points
     landmarks.forEach(pt => {
         const mx = width - pt._x;
         const my = pt._y;
-        ctx.beginPath(); ctx.arc(mx, my, 2, 0, 2 * Math.PI); ctx.fill();
-    });
-    if (landmarks.length > 1) {
+        const radius = 6;
+        const gradient = ctx.createRadialGradient(mx, my, 0, mx, my, radius);
+        gradient.addColorStop(0, 'rgba(255,0,255,0.9)');
+        gradient.addColorStop(1, 'rgba(255,0,255,0)');
+        ctx.fillStyle = gradient;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = 'magenta';
         ctx.beginPath();
-        ctx.moveTo(width - landmarks[0]._x, landmarks[0]._y);
-        landmarks.slice(1, 5).forEach(pt => {
-            ctx.lineTo(width - pt._x, pt._y);
-        });
-        ctx.stroke();
-    }
+        ctx.arc(mx, my, radius, 0, 2 * Math.PI);
+        ctx.fill();
+    });
+    // Draw neon connecting lines
+    ctx.strokeStyle = 'rgba(255,0,255,0.7)';
+    ctx.lineWidth = 2;
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = 'magenta';
+    ctx.beginPath();
+    landmarks.forEach((pt, idx) => {
+        const mx = width - pt._x;
+        const my = pt._y;
+        if (idx === 0) ctx.moveTo(mx, my);
+        else ctx.lineTo(mx, my);
+    });
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
 }
 
 var registeredDescriptors = [];
@@ -434,16 +465,7 @@ async function initWorkerAddEventListener() {
 					
 					
 				}
-				try {
-					drawImageDataToCanvas(event.data.data.detections, canvasOutputId);
-					// Optionally draw landmarks on the snapshot canvas if enabled
-					if (disp_face_landmark_yn === "y" && event.data.data.detections[0] && event.data.data.detections[0][0]) {
-						const landmarks = event.data.data.detections[0][0].landmarks._positions;
-						drawSnapshotLandmarks(landmarks, canvasOutputId);
-					}
-				} catch (err) {
-					console.log(err);
-				}
+				try{drawImageDataToCanvas(event.data.data.detections, canvasOutputId);}catch(err){console.log(err);}
 			}
 			
 			if(typeof vle_face_landmark_position_yn === "string"){
@@ -660,22 +682,3 @@ document.addEventListener("DOMContentLoaded", async function(event) {
     console.log("DOMContentLoaded"); 
     await initWorker();
 });
-
-// New: draw landmarks directly on the snapshot canvas for modern display
-/**
- * Draws landmarks on the snapshot canvas for modern display.
- * @param {Array} landmarks - Array of { _x, _y } points.
- * @param {string} canvasId - ID of the snapshot canvas.
- */
-function drawSnapshotLandmarks(landmarks, canvasId) {
-    const canvas = document.getElementById(canvasId);
-    const ctx = canvas.getContext('2d');
-    ctx.save();
-    ctx.fillStyle = 'rgba(0, 150, 255, 0.8)';
-    landmarks.forEach(pt => {
-        ctx.beginPath();
-        ctx.arc(pt._x, pt._y, 3, 0, 2 * Math.PI);
-        ctx.fill();
-    });
-    ctx.restore();
-}
